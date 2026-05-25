@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowLeft,
@@ -8,16 +8,79 @@ import {
   Zap,
   Fuel,
   BarChart3,
+  Search,
 } from "lucide-react";
 import { calculate } from "../components/services/api";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 
-/* ─── Shared input style ─────────────────────────────────────── */
+/* ─── Appliance Library ──────────────────────────────────────── */
+const APPLIANCE_LIBRARY = [
+  // Lighting
+  { name: "LED Bulb", power: 9, category: "Lighting" },
+  { name: "Fluorescent Tube (2ft)", power: 20, category: "Lighting" },
+  { name: "Fluorescent Tube (4ft)", power: 36, category: "Lighting" },
+  { name: "Security Light (Outdoor)", power: 30, category: "Lighting" },
+  // Cooling
+  { name: "Ceiling Fan", power: 75, category: "Cooling" },
+  { name: "Standing Fan", power: 60, category: "Cooling" },
+  { name: "Table Fan", power: 40, category: "Cooling" },
+  { name: "AC Unit (1HP)", power: 750, category: "Cooling" },
+  { name: "AC Unit (1.5HP)", power: 1100, category: "Cooling" },
+  { name: "AC Unit (2HP)", power: 1500, category: "Cooling" },
+  // Kitchen
+  { name: "Refrigerator (Small)", power: 100, category: "Kitchen" },
+  {
+    name: "Refrigerator (Large / Double Door)",
+    power: 200,
+    category: "Kitchen",
+  },
+  { name: "Deep Freezer", power: 150, category: "Kitchen" },
+  { name: "Microwave", power: 1200, category: "Kitchen" },
+  { name: "Electric Kettle", power: 1500, category: "Kitchen" },
+  { name: "Blender", power: 400, category: "Kitchen" },
+  { name: "Rice Cooker", power: 700, category: "Kitchen" },
+  { name: "Electric Cooker (per plate)", power: 1000, category: "Kitchen" },
+  { name: "Water Dispenser", power: 500, category: "Kitchen" },
+  { name: "Toaster", power: 800, category: "Kitchen" },
+  // Entertainment
+  { name: 'LED TV (32")', power: 50, category: "Entertainment" },
+  { name: 'LED TV (43")', power: 80, category: "Entertainment" },
+  { name: 'LED TV (55")', power: 120, category: "Entertainment" },
+  { name: "DSTV Decoder", power: 30, category: "Entertainment" },
+  { name: "Sound System / Subwoofer", power: 200, category: "Entertainment" },
+  { name: "DVD / Media Player", power: 25, category: "Entertainment" },
+  // Office & Tech
+  { name: "Laptop", power: 65, category: "Office" },
+  { name: "Desktop Computer", power: 200, category: "Office" },
+  { name: 'Monitor (24")', power: 30, category: "Office" },
+  { name: "WiFi Router", power: 15, category: "Office" },
+  { name: "Phone Charger", power: 10, category: "Office" },
+  { name: "Printer", power: 400, category: "Office" },
+  { name: "Photocopier", power: 1200, category: "Office" },
+  { name: "CCTV System (4 cameras)", power: 40, category: "Office" },
+  // Water & Utilities
+  { name: "Water Pump (0.5HP)", power: 370, category: "Utilities" },
+  { name: "Water Pump (1HP)", power: 750, category: "Utilities" },
+  { name: "Borehole Pump", power: 1500, category: "Utilities" },
+  { name: "Electric Iron", power: 1000, category: "Utilities" },
+  { name: "Washing Machine", power: 500, category: "Utilities" },
+];
+
+const CATEGORY_ICONS = {
+  Lighting: "💡",
+  Cooling: "❄️",
+  Kitchen: "🍳",
+  Entertainment: "📺",
+  Office: "💻",
+  Utilities: "🔧",
+};
+
+/* ─── Shared styles ──────────────────────────────────────────── */
 const inp =
   "w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition";
 
-/* ─── Sub-components ─────────────────────────────────────────── */
+/* ─── SectionCard ────────────────────────────────────────────── */
 const SectionCard = ({
   icon: Icon,
   iconColor,
@@ -42,6 +105,7 @@ const SectionCard = ({
   </div>
 );
 
+/* ─── Field ──────────────────────────────────────────────────── */
 const Field = ({ label, hint, children }) => (
   <div>
     <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">
@@ -52,10 +116,149 @@ const Field = ({ label, hint, children }) => (
   </div>
 );
 
+/* ─── ApplianceRow with searchable combobox ──────────────────── */
+function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
+  const [query, setQuery] = useState(appliance.name);
+  const [open, setOpen] = useState(false);
+  const [autoFilled, setAutoFilled] = useState(false);
+  const containerRef = useRef(null);
+
+  const filtered =
+    query.trim().length > 0
+      ? APPLIANCE_LIBRARY.filter((a) =>
+          a.name.toLowerCase().includes(query.toLowerCase()),
+        ).slice(0, 8)
+      : [];
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (!containerRef.current?.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const selectAppliance = (item) => {
+    setQuery(item.name);
+    setOpen(false);
+    setAutoFilled(true);
+    onChange(index, { target: { name: "name", value: item.name } });
+    onChange(index, { target: { name: "power", value: String(item.power) } });
+  };
+
+  const handleQueryChange = (e) => {
+    setQuery(e.target.value);
+    setAutoFilled(false);
+    setOpen(true);
+    onChange(index, { target: { name: "name", value: e.target.value } });
+  };
+
+  return (
+    /* Mobile: stack vertically; Desktop: grid row */
+    <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr_1fr_1fr_36px] gap-2 items-start md:items-center bg-gray-50 md:bg-transparent rounded-xl md:rounded-none p-3 md:p-0">
+      {/* ── Searchable name combobox ── */}
+      <div className="relative" ref={containerRef}>
+        <div className="relative">
+          <Search
+            size={14}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300 pointer-events-none"
+          />
+          <input
+            type="text"
+            placeholder="Search appliance…"
+            value={query}
+            onChange={handleQueryChange}
+            onFocus={() => {
+              if (query.trim()) setOpen(true);
+            }}
+            className={`${inp} pl-9 ${autoFilled ? "border-teal-300 bg-teal-50" : ""}`}
+          />
+        </div>
+
+        {/* Dropdown */}
+        {open && filtered.length > 0 && (
+          <div className="absolute z-30 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
+            {filtered.map((item) => (
+              <button
+                key={item.name}
+                onMouseDown={(e) => e.preventDefault()} // prevent blur before click
+                onClick={() => selectAppliance(item)}
+                className="w-full text-left px-4 py-2.5 hover:bg-teal-50 flex justify-between items-center group transition-colors"
+              >
+                <span className="text-sm text-gray-800 flex items-center gap-2">
+                  <span>{CATEGORY_ICONS[item.category]}</span>
+                  {item.name}
+                </span>
+                <span className="text-xs text-gray-400 group-hover:text-teal-600 transition-colors shrink-0 ml-2">
+                  {item.power}W
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Power — auto-filled but editable ── */}
+      <div className="relative">
+        <input
+          type="number"
+          name="power"
+          placeholder="Watts"
+          value={appliance.power}
+          onChange={(e) => {
+            setAutoFilled(false);
+            onChange(index, e);
+          }}
+          className={`${inp} ${autoFilled && appliance.power ? "border-teal-300 bg-teal-50" : ""}`}
+        />
+        {autoFilled && appliance.power && (
+          <span className="absolute -top-1.5 right-2 text-[10px] bg-teal-500 text-white px-1.5 py-0.5 rounded-full font-semibold">
+            auto
+          </span>
+        )}
+      </div>
+
+      <input
+        type="number"
+        name="hours"
+        placeholder="Hrs/day"
+        value={appliance.hours}
+        onChange={(e) => onChange(index, e)}
+        className={inp}
+      />
+      <input
+        type="number"
+        name="days"
+        placeholder="Days/yr"
+        value={appliance.days}
+        onChange={(e) => onChange(index, e)}
+        className={inp}
+      />
+      <input
+        type="number"
+        name="units"
+        placeholder="Units"
+        value={appliance.units}
+        onChange={(e) => onChange(index, e)}
+        className={inp}
+      />
+
+      <button
+        onClick={() => onRemove(index)}
+        disabled={isOnly}
+        className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 disabled:opacity-20 transition-all self-center"
+      >
+        <Trash2 size={15} />
+      </button>
+    </div>
+  );
+}
+
 /* ─── Result helpers ─────────────────────────────────────────── */
 const fmt = (v) =>
   v != null ? v.toLocaleString("en-NG", { maximumFractionDigits: 2 }) : "—";
 
+/* ─── ResultCard ─────────────────────────────────────────────── */
 function ResultCard({ result }) {
   const { energy, grid, generator, solar, comparison } = result;
 
@@ -209,6 +412,15 @@ function ResultCard({ result }) {
           ))}
         </div>
       </div>
+
+      {/* Disclaimer */}
+      <div className="bg-gray-50 border border-gray-100 rounded-xl px-5 py-4">
+        <p className="text-xs text-gray-400 leading-relaxed">
+          ℹ️ These are indicative estimates to support decision-making, not
+          guaranteed prices or savings. Grid tariffs, fuel prices, and solar
+          costs vary by location, supplier, and market conditions.
+        </p>
+      </div>
     </div>
   );
 }
@@ -238,6 +450,7 @@ export default function CalculatorPage() {
 
   const addAppliance = () =>
     setAppliances((prev) => [...prev, { ...emptyAppliance }]);
+
   const removeAppliance = (index) =>
     setAppliances((prev) => prev.filter((_, i) => i !== index));
 
@@ -249,6 +462,15 @@ export default function CalculatorPage() {
   const handleSubmit = async () => {
     setError(null);
     if (appliances.length === 0) return setError("Add at least one appliance.");
+
+    const incomplete = appliances.some(
+      (a) => !a.power || !a.hours || !a.days || !a.units,
+    );
+    if (incomplete)
+      return setError(
+        "Please complete all fields for each appliance — Power, Hrs/Day, Days/Year, and Units.",
+      );
+
     setLoading(true);
     try {
       const payload = {
@@ -310,12 +532,12 @@ export default function CalculatorPage() {
           iconBg="bg-yellow-50"
           iconColor="text-yellow-500"
           title="Appliances"
-          subtitle="Add every device you want to power"
+          subtitle="Search for each device — wattage fills in automatically"
         >
-          {/* Header row */}
-          <div className="hidden md:grid grid-cols-[2fr_1fr_1fr_1fr_1fr_36px] gap-2 mb-2">
+          {/* Column headers — desktop only */}
+          <div className="hidden md:grid grid-cols-[2fr_1fr_1fr_1fr_1fr_36px] gap-2 mb-3">
             {[
-              "Appliance Name",
+              "Appliance",
               "Power (W)",
               "Hrs/Day",
               "Days/Year",
@@ -331,69 +553,34 @@ export default function CalculatorPage() {
             ))}
           </div>
 
+          {/* Rows */}
           <div className="space-y-2">
             {appliances.map((appliance, index) => (
-              <div
+              <ApplianceRow
                 key={index}
-                className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_36px] gap-2 items-center"
-              >
-                <input
-                  type="text"
-                  name="name"
-                  placeholder="e.g. Fan"
-                  value={appliance.name}
-                  onChange={(e) => handleApplianceChange(index, e)}
-                  className={inp}
-                />
-                <input
-                  type="number"
-                  name="power"
-                  placeholder="75"
-                  value={appliance.power}
-                  onChange={(e) => handleApplianceChange(index, e)}
-                  className={inp}
-                />
-                <input
-                  type="number"
-                  name="hours"
-                  placeholder="8"
-                  value={appliance.hours}
-                  onChange={(e) => handleApplianceChange(index, e)}
-                  className={inp}
-                />
-                <input
-                  type="number"
-                  name="days"
-                  placeholder="365"
-                  value={appliance.days}
-                  onChange={(e) => handleApplianceChange(index, e)}
-                  className={inp}
-                />
-                <input
-                  type="number"
-                  name="units"
-                  placeholder="1"
-                  value={appliance.units}
-                  onChange={(e) => handleApplianceChange(index, e)}
-                  className={inp}
-                />
-                <button
-                  onClick={() => removeAppliance(index)}
-                  disabled={appliances.length === 1}
-                  className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 disabled:opacity-20 transition-all"
-                >
-                  <Trash2 size={15} />
-                </button>
-              </div>
+                appliance={appliance}
+                index={index}
+                onChange={handleApplianceChange}
+                onRemove={removeAppliance}
+                isOnly={appliances.length === 1}
+              />
             ))}
           </div>
 
-          <button
-            onClick={addAppliance}
-            className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-teal-600 hover:text-teal-700 transition-colors"
-          >
-            <Plus size={16} /> Add Appliance
-          </button>
+          {/* Add button + hint */}
+          <div className="mt-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <button
+              onClick={addAppliance}
+              className="inline-flex items-center gap-2 text-sm font-semibold text-teal-600 hover:text-teal-700 transition-colors"
+            >
+              <Plus size={16} /> Add Another Appliance
+            </button>
+            <p className="text-xs text-gray-400 max-w-xs">
+              💡 Can't find your appliance? Type a name and enter the wattage
+              manually — it's usually printed on a label at the back of the
+              device.
+            </p>
+          </div>
         </SectionCard>
 
         {/* ── Grid ── */}
@@ -406,7 +593,7 @@ export default function CalculatorPage() {
         >
           <Field
             label="Tariff — cost per kWh (₦)"
-            hint="Check your NERC band on your utility bill. Common rates: Band A ≈ ₦209, Band D ≈ ₦68."
+            hint="Check your NERC band on your utility bill. Typical rates: Band A ≈ ₦209 · Band B ≈ ₦64 · Band C ≈ ₦52 · Band D ≈ ₦43."
           >
             <input
               type="number"
@@ -443,7 +630,7 @@ export default function CalculatorPage() {
             </Field>
             <Field
               label="Generator Efficiency (kWh/litre)"
-              hint="Typical small gen: 1.5–2.5 kWh/L. Larger: up to 3.5."
+              hint="Small gen: 1.5–2.5 kWh/L · Medium gen: 2.5–3.5 kWh/L."
             >
               <input
                 type="number"
@@ -468,7 +655,7 @@ export default function CalculatorPage() {
           <div className="grid md:grid-cols-2 gap-4">
             <Field
               label="System CAPEX (₦)"
-              hint="Total quote from your installer including panels, inverter, and battery."
+              hint="Total quote from your installer — panels, inverter, battery, and installation."
             >
               <input
                 type="number"
