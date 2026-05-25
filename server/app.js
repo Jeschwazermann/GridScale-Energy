@@ -1,8 +1,6 @@
-// app.js
-
 import express from "express";
 import cors from "cors";
-import calculatorRoutes from "./routes/calculatorRoutes.js";
+import calculatorRoute from "./routes/calculatorRoute.js";
 
 const app = express();
 
@@ -10,6 +8,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.use("/api", calculatorRoutes);
+app.use("/api", calculatorRoute);
 
 export default app;
