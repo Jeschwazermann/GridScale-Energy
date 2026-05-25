@@ -4,9 +4,14 @@ import { solarCost } from "../services/solarService.js";
 import { compareCosts } from "../services/comparisonService.js";
 import { calculateEnergy } from "../services/energyService.js";
 
-export const calculate = async (req, res) => {
+export const calculate = async (req, res, next) => {
   try {
     const data = req.body;
+    if (!data.appliances || data.appliances.length === 0) {
+      const err = new Error("At least one appliance is required.");
+      err.status = 400;
+      return next(err);
+    }
 
     // 1. Energy
     const energy = calculateEnergy(data.appliances);
@@ -27,6 +32,6 @@ export const calculate = async (req, res) => {
       comparison,
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 };

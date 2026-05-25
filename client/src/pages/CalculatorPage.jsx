@@ -4,12 +4,13 @@ import {
   ArrowLeft,
   Plus,
   Trash2,
+  BarChart3,
+  Search,
   Sun,
   Zap,
   Fuel,
-  BarChart3,
-  Search,
 } from "lucide-react";
+import ResultCard from "../components/ResultCard";
 import { calculate } from "../components/services/api";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
@@ -120,7 +121,6 @@ const Field = ({ label, hint, children }) => (
 function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
   const [query, setQuery] = useState(appliance.name);
   const [open, setOpen] = useState(false);
-  const [autoFilled, setAutoFilled] = useState(false);
   const containerRef = useRef(null);
 
   const filtered =
@@ -141,14 +141,13 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
   const selectAppliance = (item) => {
     setQuery(item.name);
     setOpen(false);
-    setAutoFilled(true);
     onChange(index, { target: { name: "name", value: item.name } });
     onChange(index, { target: { name: "power", value: String(item.power) } });
   };
 
   const handleQueryChange = (e) => {
     setQuery(e.target.value);
-    setAutoFilled(false);
+    
     setOpen(true);
     onChange(index, { target: { name: "name", value: e.target.value } });
   };
@@ -171,7 +170,7 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
             onFocus={() => {
               if (query.trim()) setOpen(true);
             }}
-            className={`${inp} pl-9 ${autoFilled ? "border-teal-300 bg-teal-50" : ""}`}
+            className={`${inp} pl-9`}
           />
         </div>
 
@@ -199,24 +198,14 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
       </div>
 
       {/* ── Power — auto-filled but editable ── */}
-      <div className="relative">
-        <input
-          type="number"
-          name="power"
-          placeholder="Watts"
-          value={appliance.power}
-          onChange={(e) => {
-            setAutoFilled(false);
-            onChange(index, e);
-          }}
-          className={`${inp} ${autoFilled && appliance.power ? "border-teal-300 bg-teal-50" : ""}`}
-        />
-        {autoFilled && appliance.power && (
-          <span className="absolute -top-1.5 right-2 text-[10px] bg-teal-500 text-white px-1.5 py-0.5 rounded-full font-semibold">
-            auto
-          </span>
-        )}
-      </div>
+      <input
+  type="number"
+  name="power"
+  placeholder="Watts"
+  value={appliance.power}
+  onChange={(e) => onChange(index, e)}
+  className={inp}
+/>
 
       <input
         type="number"
@@ -250,177 +239,6 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
       >
         <Trash2 size={15} />
       </button>
-    </div>
-  );
-}
-
-/* ─── Result helpers ─────────────────────────────────────────── */
-const fmt = (v) =>
-  v != null ? v.toLocaleString("en-NG", { maximumFractionDigits: 2 }) : "—";
-
-/* ─── ResultCard ─────────────────────────────────────────────── */
-function ResultCard({ result }) {
-  const { energy, grid, generator, solar, comparison } = result;
-
-  const sources = [
-    {
-      icon: Zap,
-      label: "Grid",
-      monthly: grid.monthlyCost,
-      annual: grid.annualCost,
-      detail: "Utility tariff-based",
-      iconBg: "bg-yellow-50",
-      iconColor: "text-yellow-500",
-    },
-    {
-      icon: Fuel,
-      label: "Generator",
-      monthly: generator.monthlyCost,
-      annual: generator.annualCost,
-      detail: `₦${fmt(generator.costPerKWh)}/kWh`,
-      iconBg: "bg-orange-50",
-      iconColor: "text-orange-500",
-    },
-    {
-      icon: Sun,
-      label: "Solar",
-      monthly: solar.monthlyCost,
-      annual: solar.annualCost,
-      detail: `₦${fmt(solar.costPerKWh)}/kWh`,
-      iconBg: "bg-teal-50",
-      iconColor: "text-teal-600",
-    },
-  ];
-
-  return (
-    <div className="space-y-5 mt-2">
-      {/* Energy summary */}
-      <div className="bg-teal-600 rounded-2xl p-6 text-white">
-        <p className="text-teal-200 text-xs font-bold uppercase tracking-widest mb-4">
-          ⚡ Energy Consumption
-        </p>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <p className="text-teal-200 text-xs mb-1">Monthly</p>
-            <p className="font-display font-bold text-3xl">
-              {fmt(energy.monthlyKWh)}
-            </p>
-            <p className="text-teal-300 text-sm">kWh</p>
-          </div>
-          <div>
-            <p className="text-teal-200 text-xs mb-1">Annual</p>
-            <p className="font-display font-bold text-3xl">
-              {fmt(energy.annualKWh)}
-            </p>
-            <p className="text-teal-300 text-sm">kWh</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Cost comparison */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-50">
-          <p className="font-display font-bold text-gray-900">
-            📊 Cost Comparison
-          </p>
-        </div>
-        <div className="divide-y divide-gray-50">
-          {sources.map(
-            ({
-              icon: Icon,
-              label,
-              monthly,
-              annual,
-              detail,
-              iconBg,
-              iconColor,
-            }) => {
-              const best = label === comparison.cheapestSource;
-              return (
-                <div
-                  key={label}
-                  className={`flex items-center justify-between px-6 py-4 transition-colors ${best ? "bg-teal-50" : ""}`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`w-9 h-9 rounded-xl ${iconBg} flex items-center justify-center shrink-0`}
-                    >
-                      <Icon size={16} className={iconColor} />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-semibold text-sm text-gray-800">
-                          {label}
-                        </p>
-                        {best && (
-                          <span className="text-xs bg-teal-100 text-teal-700 font-bold px-2 py-0.5 rounded-full">
-                            Cheapest
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-gray-400">{detail}</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p
-                      className={`font-display font-bold text-base ${best ? "text-teal-700" : "text-gray-800"}`}
-                    >
-                      ₦{fmt(monthly)}/mo
-                    </p>
-                    <p className="text-xs text-gray-400">₦{fmt(annual)}/yr</p>
-                  </div>
-                </div>
-              );
-            },
-          )}
-        </div>
-      </div>
-
-      {/* Solar verdict */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-50">
-          <p className="font-display font-bold text-gray-900">
-            ☀️ Solar Verdict
-          </p>
-        </div>
-        <div className="divide-y divide-gray-50">
-          {[
-            {
-              label: "Annual Savings vs Grid",
-              value: `₦${fmt(comparison.savingsPerYear)}`,
-              highlight: comparison.savingsPerYear > 0,
-            },
-            {
-              label: "Solar Payback Period",
-              value: comparison.paybackYears
-                ? `${fmt(comparison.paybackYears)} years`
-                : "N/A — solar costs more than grid",
-            },
-            { label: "Recommended Source", value: comparison.cheapestSource },
-          ].map(({ label, value, highlight }) => (
-            <div
-              key={label}
-              className="flex justify-between items-center px-6 py-4"
-            >
-              <span className="text-sm text-gray-500">{label}</span>
-              <span
-                className={`text-sm font-bold font-display ${highlight ? "text-teal-600" : "text-gray-800"}`}
-              >
-                {value}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Disclaimer */}
-      <div className="bg-gray-50 border border-gray-100 rounded-xl px-5 py-4">
-        <p className="text-xs text-gray-400 leading-relaxed">
-          ℹ️ These are indicative estimates to support decision-making, not
-          guaranteed prices or savings. Grid tariffs, fuel prices, and solar
-          costs vary by location, supplier, and market conditions.
-        </p>
-      </div>
     </div>
   );
 }
@@ -593,7 +411,7 @@ export default function CalculatorPage() {
         >
           <Field
             label="Tariff — cost per kWh (₦)"
-            hint="Check your NERC band on your utility bill. Typical rates: Band A ≈ ₦209 · Band B ≈ ₦64 · Band C ≈ ₦52 · Band D ≈ ₦43."
+            hint="Check your NERC band on your utility bill. Typical rates: Band A ≈ ₦209 · Band B ≈ ₦109 · Band D ≈ ₦68."
           >
             <input
               type="number"
@@ -702,7 +520,10 @@ export default function CalculatorPage() {
         {/* Results */}
         {result && (
           <div id="results">
-            <ResultCard result={result} />
+            <ResultCard
+              result={result}
+              lifespan={parseFloat(settings.lifespan)}
+            />
           </div>
         )}
       </div>
