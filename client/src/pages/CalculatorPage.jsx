@@ -147,7 +147,7 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
 
   const handleQueryChange = (e) => {
     setQuery(e.target.value);
-    
+
     setOpen(true);
     onChange(index, { target: { name: "name", value: e.target.value } });
   };
@@ -199,13 +199,13 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
 
       {/* ── Power — auto-filled but editable ── */}
       <input
-  type="number"
-  name="power"
-  placeholder="Watts"
-  value={appliance.power}
-  onChange={(e) => onChange(index, e)}
-  className={inp}
-/>
+        type="number"
+        name="power"
+        placeholder="Watts"
+        value={appliance.power}
+        onChange={(e) => onChange(index, e)}
+        className={inp}
+      />
 
       <input
         type="number"
