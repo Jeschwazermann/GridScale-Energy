@@ -13,7 +13,14 @@ export default function Hero() {
   }, []);
 
   return (
-    <section className="hero-mesh min-h-screen flex flex-col justify-center relative overflow-hidden">
+    <section
+      className="hero-mesh min-h-screen flex flex-col justify-center relative overflow-hidden"
+      style={{
+        backgroundImage: `url('/images/hero-solar.jpg')`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+      }}
+    >
       {/* Decorative grid overlay */}
       <div
         className="absolute inset-0 opacity-10"
@@ -30,7 +37,6 @@ export default function Hero() {
 
       <div className="relative max-w-6xl mx-auto px-6 pt-32 pb-24">
         <div className="grid md:grid-cols-2 gap-16 items-center">
-
           {/* Left — Copy */}
           <div>
             {/* Badge */}
@@ -109,18 +115,23 @@ export default function Hero() {
                   <Sun size={14} className="text-teal-300" />
                   <span className="text-xs text-teal-200">Solar</span>
                 </div>
-                <p className="font-display font-bold text-xl text-teal-300">₦22/kWh</p>
+                <p className="font-display font-bold text-xl text-teal-300">
+                  ₦22/kWh
+                </p>
                 <p className="text-xs text-teal-400 mt-0.5">✓ Cheapest</p>
               </div>
             </div>
           </div>
-
         </div>
       </div>
 
       {/* Bottom wave */}
       <div className="absolute bottom-0 left-0 right-0">
-        <svg viewBox="0 0 1440 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <svg
+          viewBox="0 0 1440 80"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
           <path
             d="M0 80L48 69.3C96 58.7 192 37.3 288 32C384 26.7 480 37.3 576 48C672 58.7 768 69.3 864 64C960 58.7 1056 37.3 1152 32C1248 26.7 1344 37.3 1392 42.7L1440 48V80H0Z"
             fill="white"

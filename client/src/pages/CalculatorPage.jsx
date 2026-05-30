@@ -17,19 +17,16 @@ import Footer from "../components/Footer";
 
 /* ─── Appliance Library ──────────────────────────────────────── */
 const APPLIANCE_LIBRARY = [
-  // Lighting
   { name: "LED Bulb", power: 9, category: "Lighting" },
   { name: "Fluorescent Tube (2ft)", power: 20, category: "Lighting" },
   { name: "Fluorescent Tube (4ft)", power: 36, category: "Lighting" },
   { name: "Security Light (Outdoor)", power: 30, category: "Lighting" },
-  // Cooling
   { name: "Ceiling Fan", power: 75, category: "Cooling" },
   { name: "Standing Fan", power: 60, category: "Cooling" },
   { name: "Table Fan", power: 40, category: "Cooling" },
   { name: "AC Unit (1HP)", power: 750, category: "Cooling" },
   { name: "AC Unit (1.5HP)", power: 1100, category: "Cooling" },
   { name: "AC Unit (2HP)", power: 1500, category: "Cooling" },
-  // Kitchen
   { name: "Refrigerator (Small)", power: 100, category: "Kitchen" },
   {
     name: "Refrigerator (Large / Double Door)",
@@ -44,14 +41,12 @@ const APPLIANCE_LIBRARY = [
   { name: "Electric Cooker (per plate)", power: 1000, category: "Kitchen" },
   { name: "Water Dispenser", power: 500, category: "Kitchen" },
   { name: "Toaster", power: 800, category: "Kitchen" },
-  // Entertainment
   { name: 'LED TV (32")', power: 50, category: "Entertainment" },
   { name: 'LED TV (43")', power: 80, category: "Entertainment" },
   { name: 'LED TV (55")', power: 120, category: "Entertainment" },
   { name: "DSTV Decoder", power: 30, category: "Entertainment" },
   { name: "Sound System / Subwoofer", power: 200, category: "Entertainment" },
   { name: "DVD / Media Player", power: 25, category: "Entertainment" },
-  // Office & Tech
   { name: "Laptop", power: 65, category: "Office" },
   { name: "Desktop Computer", power: 200, category: "Office" },
   { name: 'Monitor (24")', power: 30, category: "Office" },
@@ -60,7 +55,6 @@ const APPLIANCE_LIBRARY = [
   { name: "Printer", power: 400, category: "Office" },
   { name: "Photocopier", power: 1200, category: "Office" },
   { name: "CCTV System (4 cameras)", power: 40, category: "Office" },
-  // Water & Utilities
   { name: "Water Pump (0.5HP)", power: 370, category: "Utilities" },
   { name: "Water Pump (1HP)", power: 750, category: "Utilities" },
   { name: "Borehole Pump", power: 1500, category: "Utilities" },
@@ -77,9 +71,44 @@ const CATEGORY_ICONS = {
   Utilities: "🔧",
 };
 
+/* ─── Generator efficiency presets ──────────────────────────── */
+const GEN_EFFICIENCY_OPTIONS = [
+  { label: "Small gen (Tiger / Keke, 1–2kVA) — ~1.8 kWh/L", value: "1.8" },
+  { label: "Medium gen (2.5–5kVA) — ~2.5 kWh/L", value: "2.5" },
+  { label: "Large diesel gen (7.5kVA+) — ~3.5 kWh/L", value: "3.5" },
+];
+
+/* ─── Smart CAPEX suggestion ─────────────────────────────────── */
+const suggestCapex = (annualKWh) => {
+  if (!annualKWh || annualKWh <= 0) return null;
+  const dailyWh = (annualKWh * 1000) / 365;
+  const peakSunHours = 5;
+  const safetyFactor = 1.3;
+  const systemWatts = (dailyWh / peakSunHours) * safetyFactor;
+  return Math.round((systemWatts * 2500) / 100_000) * 100_000;
+};
+
 /* ─── Shared styles ──────────────────────────────────────────── */
 const inp =
   "w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition";
+
+/* ─── Toggle ─────────────────────────────────────────────────── */
+function Toggle({ enabled, onToggle }) {
+  return (
+    <button
+      onClick={onToggle}
+      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none ${
+        enabled ? "bg-teal-600" : "bg-gray-200"
+      }`}
+    >
+      <span
+        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ${
+          enabled ? "translate-x-6" : "translate-x-1"
+        }`}
+      />
+    </button>
+  );
+}
 
 /* ─── SectionCard ────────────────────────────────────────────── */
 const SectionCard = ({
@@ -88,21 +117,43 @@ const SectionCard = ({
   iconBg,
   title,
   subtitle,
+  toggle,
+  enabled,
+  onToggle,
   children,
 }) => (
-  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+  <div
+    className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all duration-200 ${
+      enabled === false ? "border-gray-100 opacity-60" : "border-gray-100"
+    }`}
+  >
     <div className="flex items-center gap-4 px-6 py-5 border-b border-gray-50">
       <div
         className={`w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center shrink-0`}
       >
         <Icon size={18} className={iconColor} strokeWidth={1.8} />
       </div>
-      <div>
+      <div className="flex-1">
         <h2 className="font-display font-bold text-gray-900">{title}</h2>
         {subtitle && <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>}
       </div>
+      {toggle && (
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-xs text-gray-400 font-medium">
+            {enabled ? "Included" : "Not included"}
+          </span>
+          <Toggle enabled={enabled} onToggle={onToggle} />
+        </div>
+      )}
     </div>
-    <div className="px-6 py-6">{children}</div>
+    {enabled !== false && <div className="px-6 py-6">{children}</div>}
+    {enabled === false && (
+      <div className="px-6 py-4">
+        <p className="text-xs text-gray-400">
+          Toggle on to include this source in the comparison.
+        </p>
+      </div>
+    )}
   </div>
 );
 
@@ -117,7 +168,7 @@ const Field = ({ label, hint, children }) => (
   </div>
 );
 
-/* ─── ApplianceRow with searchable combobox ──────────────────── */
+/* ─── ApplianceRow ───────────────────────────────────────────── */
 function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
   const [query, setQuery] = useState(appliance.name);
   const [open, setOpen] = useState(false);
@@ -147,15 +198,12 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
 
   const handleQueryChange = (e) => {
     setQuery(e.target.value);
-
     setOpen(true);
     onChange(index, { target: { name: "name", value: e.target.value } });
   };
 
   return (
-    /* Mobile: stack vertically; Desktop: grid row */
     <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr_1fr_1fr_36px] gap-2 items-start md:items-center bg-gray-50 md:bg-transparent rounded-xl md:rounded-none p-3 md:p-0">
-      {/* ── Searchable name combobox ── */}
       <div className="relative" ref={containerRef}>
         <div className="relative">
           <Search
@@ -173,14 +221,12 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
             className={`${inp} pl-9`}
           />
         </div>
-
-        {/* Dropdown */}
         {open && filtered.length > 0 && (
           <div className="absolute z-30 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
             {filtered.map((item) => (
               <button
                 key={item.name}
-                onMouseDown={(e) => e.preventDefault()} // prevent blur before click
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => selectAppliance(item)}
                 className="w-full text-left px-4 py-2.5 hover:bg-teal-50 flex justify-between items-center group transition-colors"
               >
@@ -197,7 +243,6 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
         )}
       </div>
 
-      {/* ── Power — auto-filled but editable ── */}
       <input
         type="number"
         name="power"
@@ -206,7 +251,6 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
         onChange={(e) => onChange(index, e)}
         className={inp}
       />
-
       <input
         type="number"
         name="hours"
@@ -243,11 +287,13 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
   );
 }
 
-/* ─── Main Calculator Page ───────────────────────────────────── */
+/* ─── Main ───────────────────────────────────────────────────── */
 const emptyAppliance = { name: "", power: "", hours: "", days: "", units: "1" };
 
 export default function CalculatorPage() {
   const [appliances, setAppliances] = useState([{ ...emptyAppliance }]);
+  const [includeGrid, setIncludeGrid] = useState(false);
+  const [includeGenerator, setIncludeGenerator] = useState(false);
   const [settings, setSettings] = useState({
     gridTariff: "",
     fuelPrice: "",
@@ -255,9 +301,27 @@ export default function CalculatorPage() {
     capex: "",
     lifespan: "",
   });
+  const [capexSuggestion, setCapexSuggestion] = useState(null);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  /* Recompute CAPEX suggestion whenever appliances change */
+  useEffect(() => {
+    const annualKWh = appliances.reduce((sum, a) => {
+      const power = parseFloat(a.power) || 0;
+      const hours = parseFloat(a.hours) || 0;
+      const days = parseFloat(a.days) || 0;
+      const units = parseFloat(a.units) || 1;
+      return sum + (power * hours * days * units) / 1000;
+    }, 0);
+    setCapexSuggestion(suggestCapex(annualKWh));
+  }, [appliances]);
+
+  const applyCapexSuggestion = () => {
+    if (capexSuggestion)
+      setSettings((prev) => ({ ...prev, capex: String(capexSuggestion) }));
+  };
 
   const handleApplianceChange = (index, e) => {
     const { name, value } = e.target;
@@ -279,6 +343,13 @@ export default function CalculatorPage() {
 
   const handleSubmit = async () => {
     setError(null);
+
+    // Require at least one comparison source
+    if (!includeGrid && !includeGenerator)
+      return setError(
+        "Toggle on at least one comparison source — Grid or Generator.",
+      );
+
     if (appliances.length === 0) return setError("Add at least one appliance.");
 
     const incomplete = appliances.some(
@@ -287,6 +358,21 @@ export default function CalculatorPage() {
     if (incomplete)
       return setError(
         "Please complete all fields for each appliance — Power, Hrs/Day, Days/Year, and Units.",
+      );
+
+    if (includeGrid && !settings.gridTariff)
+      return setError(
+        "Enter your grid tariff (₦/kWh) to include grid in the comparison.",
+      );
+
+    if (includeGenerator && (!settings.fuelPrice || !settings.efficiency))
+      return setError(
+        "Enter fuel price and select a generator size to include generator in the comparison.",
+      );
+
+    if (!settings.capex || !settings.lifespan)
+      return setError(
+        "Enter the solar system CAPEX and lifespan to complete the calculation.",
       );
 
     setLoading(true);
@@ -298,11 +384,13 @@ export default function CalculatorPage() {
           days: parseFloat(a.days),
           units: parseFloat(a.units),
         })),
-        gridTariff: parseFloat(settings.gridTariff),
-        fuelPrice: parseFloat(settings.fuelPrice),
-        efficiency: parseFloat(settings.efficiency),
         capex: parseFloat(settings.capex),
         lifespan: parseFloat(settings.lifespan),
+        ...(includeGrid && { gridTariff: parseFloat(settings.gridTariff) }),
+        ...(includeGenerator && {
+          fuelPrice: parseFloat(settings.fuelPrice),
+          efficiency: parseFloat(settings.efficiency),
+        }),
       };
       const res = await calculate(payload);
       setResult(res);
@@ -324,7 +412,6 @@ export default function CalculatorPage() {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
 
-      {/* Page header */}
       <div className="bg-teal-700 pt-24 pb-12 px-6">
         <div className="max-w-3xl mx-auto">
           <Link
@@ -337,14 +424,14 @@ export default function CalculatorPage() {
             Energy Cost Calculator
           </h1>
           <p className="text-teal-200">
-            Fill in your appliances and energy inputs below to get a full cost
-            comparison.
+            Add your appliances, toggle on the energy sources you currently use,
+            and see how solar compares.
           </p>
         </div>
       </div>
 
       <div className="max-w-3xl mx-auto px-6 py-10 space-y-6">
-        {/* ── Appliances ── */}
+        {/* Appliances */}
         <SectionCard
           icon={Zap}
           iconBg="bg-yellow-50"
@@ -352,7 +439,6 @@ export default function CalculatorPage() {
           title="Appliances"
           subtitle="Search for each device — wattage fills in automatically"
         >
-          {/* Column headers — desktop only */}
           <div className="hidden md:grid grid-cols-[2fr_1fr_1fr_1fr_1fr_36px] gap-2 mb-3">
             {[
               "Appliance",
@@ -370,8 +456,6 @@ export default function CalculatorPage() {
               </span>
             ))}
           </div>
-
-          {/* Rows */}
           <div className="space-y-2">
             {appliances.map((appliance, index) => (
               <ApplianceRow
@@ -384,8 +468,6 @@ export default function CalculatorPage() {
               />
             ))}
           </div>
-
-          {/* Add button + hint */}
           <div className="mt-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <button
               onClick={addAppliance}
@@ -401,13 +483,27 @@ export default function CalculatorPage() {
           </div>
         </SectionCard>
 
-        {/* ── Grid ── */}
+        {/* Comparison sources label */}
+        <div className="pt-2">
+          <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">
+            Comparison Sources
+          </p>
+          <p className="text-sm text-gray-500">
+            Toggle on the energy sources you currently rely on. Solar is always
+            included.
+          </p>
+        </div>
+
+        {/* Grid */}
         <SectionCard
           icon={Zap}
           iconBg="bg-blue-50"
           iconColor="text-blue-500"
           title="Grid"
-          subtitle="Your electricity tariff from the utility provider"
+          subtitle="Compare solar against your utility electricity tariff"
+          toggle
+          enabled={includeGrid}
+          onToggle={() => setIncludeGrid((v) => !v)}
         >
           <Field
             label="Tariff — cost per kWh (₦)"
@@ -424,13 +520,16 @@ export default function CalculatorPage() {
           </Field>
         </SectionCard>
 
-        {/* ── Generator ── */}
+        {/* Generator */}
         <SectionCard
           icon={Fuel}
           iconBg="bg-orange-50"
           iconColor="text-orange-500"
           title="Generator"
-          subtitle="Fuel cost and how efficiently your generator converts it"
+          subtitle="Compare solar against your generator running costs"
+          toggle
+          enabled={includeGenerator}
+          onToggle={() => setIncludeGenerator((v) => !v)}
         >
           <div className="grid md:grid-cols-2 gap-4">
             <Field
@@ -447,42 +546,63 @@ export default function CalculatorPage() {
               />
             </Field>
             <Field
-              label="Generator Efficiency (kWh/litre)"
-              hint="Small gen: 1.5–2.5 kWh/L · Medium gen: 2.5–3.5 kWh/L."
+              label="Generator Size"
+              hint="Not sure? Pick the closest match — efficiency is estimated for you."
             >
-              <input
-                type="number"
+              <select
                 name="efficiency"
-                placeholder="e.g. 2.5"
                 value={settings.efficiency}
                 onChange={handleSettingsChange}
                 className={inp}
-              />
+              >
+                <option value="" disabled>
+                  Select generator size…
+                </option>
+                {GEN_EFFICIENCY_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
             </Field>
           </div>
         </SectionCard>
 
-        {/* ── Solar ── */}
+        {/* Solar — always on */}
         <SectionCard
           icon={Sun}
           iconBg="bg-teal-50"
           iconColor="text-teal-600"
           title="Solar"
-          subtitle="Total installation cost and expected system lifespan"
+          subtitle="Always included — this is what we're comparing against"
         >
           <div className="grid md:grid-cols-2 gap-4">
             <Field
               label="System CAPEX (₦)"
-              hint="Total quote from your installer — panels, inverter, battery, and installation."
+              hint={
+                capexSuggestion
+                  ? `Based on your appliances, a suitable system costs roughly ₦${capexSuggestion.toLocaleString("en-NG")}.`
+                  : "Total quote from your installer — panels, inverter, battery, and installation."
+              }
             >
-              <input
-                type="number"
-                name="capex"
-                placeholder="e.g. 3500000"
-                value={settings.capex}
-                onChange={handleSettingsChange}
-                className={inp}
-              />
+              <div className="relative">
+                <input
+                  type="number"
+                  name="capex"
+                  placeholder="e.g. 3500000"
+                  value={settings.capex}
+                  onChange={handleSettingsChange}
+                  className={inp}
+                />
+                {capexSuggestion && !settings.capex && (
+                  <button
+                    onClick={applyCapexSuggestion}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-teal-600 hover:text-teal-700 bg-teal-50 hover:bg-teal-100 px-2 py-1 rounded-lg transition-colors whitespace-nowrap"
+                  >
+                    Use ₦{(capexSuggestion / 1_000_000).toFixed(1)}M estimate
+                  </button>
+                )}
+              </div>
             </Field>
             <Field
               label="System Lifespan (years)"
