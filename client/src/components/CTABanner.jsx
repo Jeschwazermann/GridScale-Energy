@@ -6,12 +6,23 @@ export default function CTABanner() {
   const ref = useReveal();
 
   return (
-    <section className="py-24 px-6 bg-gray-950" ref={ref}>
-      <div className="max-w-4xl mx-auto text-center">
+    <section
+      className="py-24 px-6 bg-gray-950 relative overflow-hidden"
+      ref={ref}
+      style={{
+        backgroundImage: "url('/images/cta-solar-farm.jpg')",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+      }}
+    >
+      <div className="max-w-4xl mx-auto text-center relative z-10">
+        {/* Dark overlay so the photo doesn't compete with the gradient card */}
+        <div className="absolute inset-0 bg-gray-950/70 -z-10" />
         <div
           className="relative rounded-3xl overflow-hidden px-8 py-16"
           style={{
-            background: "linear-gradient(135deg, #134e4a 0%, #0d9488 50%, #065f46 100%)",
+            background:
+              "linear-gradient(135deg, #134e4a 0%, #0d9488 50%, #065f46 100%)",
           }}
         >
           {/* Decorative blobs */}

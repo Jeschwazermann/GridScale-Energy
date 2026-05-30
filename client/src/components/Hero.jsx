@@ -18,9 +18,18 @@ export default function Hero() {
       style={{
         backgroundImage: `url('/images/hero-solar.jpg')`,
         backgroundSize: "cover",
-        backgroundPosition: "center",
+        backgroundPosition: "center right",
       }}
     >
+      {/* Teal gradient overlay — sits on top of photo at ~80% opacity */}
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "linear-gradient(135deg, rgba(13,20,30,0.88) 0%, rgba(15,118,110,0.80) 60%, rgba(6,95,70,0.75) 100%)",
+        }}
+      />
+
       {/* Decorative grid overlay */}
       <div
         className="absolute inset-0 opacity-10"
