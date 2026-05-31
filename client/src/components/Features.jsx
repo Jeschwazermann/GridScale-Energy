@@ -1,70 +1,96 @@
-import { BarChart3, Shield, Globe, Zap, RefreshCw, Download } from "lucide-react";
+import {
+  BarChart3,
+  Shield,
+  Globe,
+  Zap,
+  RefreshCw,
+  Download,
+} from "lucide-react";
 import { useReveal } from "../hooks/useReveal";
 
 const features = [
   {
+    id: "comparison",
     icon: BarChart3,
-    title: "Side-by-Side Comparison",
-    body: "Grid, generator, and solar costs displayed together so the right choice is immediately obvious.",
+    title: "Direct cost comparison",
+    body: "Grid, generator, and solar costs side-by-side so you can see the cheapest option right away.",
   },
   {
+    id: "payback",
     icon: Shield,
-    title: "Accurate Payback Modelling",
-    body: "We calculate your solar payback period using your actual capex and real annual savings — not marketing estimates.",
+    title: "Vendor-ready payback",
+    body: "Payback is based on your actual capex and savings, not estimates you can’t use in real negotiations.",
   },
   {
+    id: "precision",
     icon: Zap,
-    title: "Appliance-Level Precision",
-    body: "Input every device separately for granular consumption data. More detail = more accurate savings projections.",
+    title: "Device-level accuracy",
+    body: "Enter each appliance and its usage, so the result reflects what you actually consume, not a broad guess.",
   },
   {
+    id: "local",
     icon: Globe,
-    title: "Nigeria-Tuned Defaults",
-    body: "Pre-loaded with realistic Nigerian grid tariffs, fuel prices, and generator efficiency ranges as reference points.",
+    title: "Nigeria pricing built in",
+    body: "The calculator starts with Nigerian grid tariffs, diesel costs, and generator efficiency ranges that match the market.",
   },
   {
+    id: "realtime",
     icon: RefreshCw,
-    title: "Instant Recalculation",
-    body: "Change one input and results update immediately. Run scenarios — what if fuel hits ₦1,500/litre?",
+    title: "Instant scenario testing",
+    body: "Change one number and the comparison updates immediately. Test fuel, tariff, or load shifts without waiting.",
   },
   {
+    id: "access",
     icon: Download,
-    title: "No Account Needed",
-    body: "Open the calculator, get your answer, leave. No email, no subscription, no friction. Just results.",
+    title: "No signup required",
+    body: "Open the calculator, enter your bills, and leave with usable results — no email, no subscription.",
   },
 ];
+
+function FeatureCard({ icon: Icon, title, body }) {
+  return (
+    <article className="group rounded-3xl border border-slate-200 bg-white p-7 transition duration-300 hover:-translate-y-1 hover:border-teal-200 hover:shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
+      <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-teal-50 text-teal-600 transition-colors group-hover:bg-teal-100">
+        <Icon size={20} strokeWidth={1.8} />
+      </div>
+      <h3 className="font-display text-lg font-semibold text-slate-900 mb-2">
+        {title}
+      </h3>
+      <p className="text-sm leading-relaxed text-slate-500">{body}</p>
+    </article>
+  );
+}
 
 export default function Features() {
   const ref = useReveal();
 
   return (
-    <section id="features" className="py-24 px-6 bg-gray-50" ref={ref}>
-      <div className="max-w-6xl mx-auto">
+    <section
+      id="features"
+      aria-labelledby="features-title"
+      className="bg-slate-50 py-24 px-6"
+      ref={ref}
+    >
+      <div className="mx-auto max-w-6xl">
         <div className="text-center mb-16">
-          <p className="text-teal-600 text-xs font-bold uppercase tracking-widest mb-3">
+          <p className="text-teal-600 text-xs font-bold uppercase tracking-[0.35em] mb-3">
             Features
           </p>
-          <h2 className="font-display text-4xl md:text-5xl font-bold text-gray-900 mb-4 reveal">
-            Built for real decisions.
+          <h2
+            id="features-title"
+            className="font-display text-4xl md:text-5xl font-bold text-slate-900 mb-4 reveal"
+          >
+            Compare energy options with confidence.
           </h2>
-          <p className="text-gray-500 text-lg max-w-xl mx-auto reveal">
-            Not a vanity tool. SolarSave gives you numbers you can actually take to a vendor or a CFO.
+          <p className="mx-auto max-w-xl text-lg text-slate-500 reveal">
+            A fast calculator that turns your actual utility and fuel costs into
+            a clear, actionable comparison for grid, generator, and solar.
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {features.map(({ icon: Icon, title, body }, i) => (
-            <div
-              key={i}
-              className="bg-white rounded-2xl p-7 border border-gray-100 hover:border-teal-200 hover:shadow-lg hover:shadow-teal-50 transition-all duration-300 group reveal"
-              style={{ transitionDelay: `${i * 80}ms` }}
-            >
-              <div className="w-11 h-11 bg-teal-50 rounded-xl flex items-center justify-center mb-5 group-hover:bg-teal-100 transition-colors">
-                <Icon size={20} className="text-teal-600" strokeWidth={1.8} />
-              </div>
-              <h3 className="font-display font-bold text-gray-900 text-lg mb-2">{title}</h3>
-              <p className="text-gray-500 text-sm leading-relaxed">{body}</p>
-            </div>
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {features.map((feature, i) => (
+            <FeatureCard key={feature.id} {...feature} />
           ))}
         </div>
       </div>

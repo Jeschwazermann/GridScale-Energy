@@ -60,10 +60,11 @@ export default function Footer() {
               Disclaimer
             </p>
             <p className="text-gray-500 text-sm leading-relaxed">
-              GridScaleAfrica provides estimates for informational purposes
-              only. Costs vary by location, vendor, and market conditions.
-              Always consult a certified solar installer before making
-              investment decisions.
+              GridScale Africa provides estimates for informational purposes
+              only. Generator costs include a 10% overhead for maintenance, oil
+              changes, and servicing. Costs vary by location, vendor, and market
+              conditions. Always consult a certified solar installer before
+              making investment decisions.
             </p>
           </div>
         </div>
