@@ -7,6 +7,8 @@ import {
   Clock,
   Wallet,
   Award,
+  AlertTriangle,
+  ArrowRight,
 } from "lucide-react";
 
 /* ─── Formatters ─────────────────────────────────────────────── */
@@ -29,11 +31,9 @@ const fmtShort = (v) => {
 const fmtKwh = (v) =>
   v != null ? v.toLocaleString("en-NG", { maximumFractionDigits: 1 }) : "—";
 
-/* ─── Solar insight for negative/zero savings ────────────────── */
+/* ─── Solar insight for zero savings only (negative handled by DiagnosticCard) */
 const getSolarInsight = (savingsPerYear, paybackMessage) => {
-  if (paybackMessage) return paybackMessage;
-  if (savingsPerYear < 0)
-    return "Solar does not offset costs at your current usage and system size. Consider a smaller system or increasing your load.";
+  if (paybackMessage && savingsPerYear === 0) return paybackMessage;
   return null;
 };
 
@@ -88,9 +88,16 @@ export default function ResultCard({ result, lifespan }) {
   }, []);
 
   const lifespanYears = lifespan || 25;
-  const savingsPositive = comparison.savingsPerYear > 0;
-  const lifetimeSavings = savingsPositive
-    ? comparison.savingsPerYear * lifespanYears
+
+  // When both grid and generator are present, the honest primary comparison
+  // is solar vs the combined spend (what the user actually pays today)
+  const hasBothSources = !!(grid && generator);
+  const primarySavings = hasBothSources
+    ? (comparison.savingsVsReality ?? comparison.savingsPerYear)
+    : comparison.savingsPerYear;
+  const primarySavingsPositive = primarySavings > 0;
+  const lifetimePrimarySavings = primarySavingsPositive
+    ? primarySavings * lifespanYears
     : 0;
 
   /* Sources — only what the backend returned */
@@ -103,7 +110,10 @@ export default function ResultCard({ result, lifespan }) {
       barColor: "from-yellow-400 to-yellow-300",
       iconBg: "bg-yellow-50",
       iconColor: "text-yellow-500",
-      detail: "Utility tariff",
+      detail:
+        grid.gridKWh != null
+          ? `${energy.gridHoursPerDay}hrs/day · ${fmtKwh(grid.gridKWh)} kWh/yr`
+          : "Utility tariff",
     },
     generator && {
       icon: Fuel,
@@ -113,8 +123,24 @@ export default function ResultCard({ result, lifespan }) {
       barColor: "from-orange-500 to-orange-300",
       iconBg: "bg-orange-50",
       iconColor: "text-orange-500",
-      detail: `${fmt(generator.costPerKWh)}/kWh (incl. maintenance)`,
+      detail:
+        generator.offGridKWh != null
+          ? `${24 - energy.gridHoursPerDay}hrs/day · ${fmtKwh(generator.offGridKWh)} kWh/yr · ${fmt(generator.costPerKWh)}/kWh`
+          : `${fmt(generator.costPerKWh)}/kWh (incl. maintenance)`,
     },
+    // Combined "current reality" row — only when both sources are present
+    hasBothSources &&
+      comparison.currentReality != null && {
+        icon: Zap,
+        label: "Grid + Generator",
+        monthly: comparison.currentReality / 12,
+        annual: comparison.currentReality,
+        barColor: "from-red-400 to-orange-400",
+        iconBg: "bg-red-50",
+        iconColor: "text-red-500",
+        detail: "Your actual combined spend today",
+        isReality: true,
+      },
     {
       icon: Sun,
       label: "Solar",
@@ -123,7 +149,7 @@ export default function ResultCard({ result, lifespan }) {
       barColor: "from-teal-600 to-teal-400",
       iconBg: "bg-teal-50",
       iconColor: "text-teal-600",
-      detail: `${fmt(solar.costPerKWh)}/kWh`,
+      detail: `${fmt(solar.costPerKWh)}/kWh · covers full 24hrs`,
     },
   ].filter(Boolean);
 
@@ -154,13 +180,17 @@ export default function ResultCard({ result, lifespan }) {
     comparison.paybackMessage,
   );
 
-  const comparisonLabel = grid ? "grid" : "generator";
+  const comparisonLabel = hasBothSources
+    ? "grid + generator"
+    : grid
+      ? "grid"
+      : "generator";
 
   return (
     <div className="space-y-4 mt-2">
       {/* ── ZONE 1: HERO SAVINGS ── */}
       <div
-        className={`rounded-2xl overflow-hidden ${savingsPositive ? "bg-gray-950" : "bg-slate-800"}`}
+        className={`rounded-2xl overflow-hidden ${primarySavingsPositive ? "bg-gray-950" : "bg-slate-800"}`}
       >
         {/* Top label bar */}
         <div className="px-6 pt-6 pb-2 flex items-center justify-between">
@@ -181,7 +211,7 @@ export default function ResultCard({ result, lifespan }) {
             className="font-display font-extrabold leading-none mb-3"
             style={{
               fontSize: "clamp(3rem, 10vw, 5rem)",
-              ...(savingsPositive
+              ...(primarySavingsPositive
                 ? {
                     background:
                       "linear-gradient(135deg, #2dd4bf 0%, #0d9488 50%, #0f766e 100%)",
@@ -191,15 +221,28 @@ export default function ResultCard({ result, lifespan }) {
                 : { color: "#64748b" }),
             }}
           >
-            {fmtShort(Math.abs(comparison.savingsPerYear))}
+            {fmtShort(Math.abs(primarySavings))}
           </p>
           <p
-            className={`text-sm max-w-xs mx-auto leading-relaxed ${savingsPositive ? "text-gray-400" : "text-slate-400"}`}
+            className={`text-sm max-w-xs mx-auto leading-relaxed ${primarySavingsPositive ? "text-gray-400" : "text-slate-400"}`}
           >
-            {savingsPositive
+            {primarySavingsPositive
               ? `saved every year by switching from ${comparisonLabel} to solar`
               : solarInsight || "solar does not reduce costs at current usage"}
           </p>
+          {/* Secondary line: when both sources exist, also show grid-only savings */}
+          {hasBothSources &&
+            primarySavingsPositive &&
+            comparison.savingsPerYear !== primarySavings && (
+              <p className="text-xs text-gray-600 mt-2">
+                (₦{fmtShort(comparison.savingsPerYear)}/yr vs grid alone ·{" "}
+                {fmtShort(
+                  (comparison.savingsVsReality ?? 0) -
+                    comparison.savingsPerYear,
+                )}{" "}
+                more from replacing generator)
+              </p>
+            )}
         </div>
 
         {/* Energy consumption strip */}
@@ -236,9 +279,11 @@ export default function ResultCard({ result, lifespan }) {
           iconBg="bg-teal-50"
           iconColor="text-teal-600"
           label="Lifetime Savings"
-          value={lifetimeSavings > 0 ? fmtShort(lifetimeSavings) : "—"}
+          value={
+            lifetimePrimarySavings > 0 ? fmtShort(lifetimePrimarySavings) : "—"
+          }
           sub={`over ${lifespanYears} yrs vs ${comparisonLabel}`}
-          highlight={lifetimeSavings > 0}
+          highlight={lifetimePrimarySavings > 0}
         />
         <MetricCard
           icon={TrendingDown}
@@ -246,7 +291,7 @@ export default function ResultCard({ result, lifespan }) {
           iconColor="text-purple-500"
           label="Solar Cost/kWh"
           value={`₦${solar.costPerKWh != null ? Math.round(solar.costPerKWh) : "—"}`}
-          sub="annualised per kWh"
+          sub="annualised · covers full 24hrs"
         />
       </div>
 
@@ -275,16 +320,20 @@ export default function ResultCard({ result, lifespan }) {
               iconBg,
               iconColor,
               detail,
+              isReality,
             }) => {
-              const best = label === comparison.cheapestSource;
+              const best = !isReality && label === comparison.cheapestSource;
               const pct = maxCost > 0 ? (annual / maxCost) * 100 : 0;
               const pctDiff =
-                !best && cheapestCost > 0
+                !best && !isReality && cheapestCost > 0
                   ? Math.round(((annual - cheapestCost) / cheapestCost) * 100)
                   : null;
 
               return (
-                <div key={label}>
+                <div
+                  key={label}
+                  className={isReality ? "border-t border-gray-100 pt-5" : ""}
+                >
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <div
@@ -292,15 +341,22 @@ export default function ResultCard({ result, lifespan }) {
                       >
                         <Icon size={13} className={iconColor} />
                       </div>
-                      <span className="text-sm font-semibold text-gray-800">
+                      <span
+                        className={`text-sm font-semibold ${isReality ? "text-gray-500" : "text-gray-800"}`}
+                      >
                         {label}
                       </span>
+                      {isReality && (
+                        <span className="text-xs bg-gray-100 text-gray-500 font-semibold px-2 py-0.5 rounded-full">
+                          Current reality
+                        </span>
+                      )}
                       {best && (
                         <span className="text-xs bg-teal-100 text-teal-700 font-bold px-2 py-0.5 rounded-full">
                           Cheapest
                         </span>
                       )}
-                      {pctDiff !== null && (
+                      {pctDiff !== null && pctDiff > 0 && (
                         <span className="text-xs bg-orange-50 text-orange-500 font-semibold px-2 py-0.5 rounded-full">
                           +{pctDiff}%
                         </span>
@@ -308,7 +364,7 @@ export default function ResultCard({ result, lifespan }) {
                     </div>
                     <div className="text-right">
                       <span
-                        className={`font-display font-bold text-sm ${best ? "text-teal-700" : "text-gray-700"}`}
+                        className={`font-display font-bold text-sm ${best ? "text-teal-700" : isReality ? "text-gray-500" : "text-gray-700"}`}
                       >
                         {fmtShort(monthly)}/mo
                       </span>
@@ -321,7 +377,7 @@ export default function ResultCard({ result, lifespan }) {
                   {/* Gradient bar */}
                   <div className="h-3 rounded-full bg-gray-100 overflow-hidden">
                     <div
-                      className={`h-full rounded-full bg-gradient-to-r ${barColor} transition-all duration-700 ease-out`}
+                      className={`h-full rounded-full bg-gradient-to-r ${barColor} transition-all duration-700 ease-out ${isReality ? "opacity-40" : ""}`}
                       style={{ width: animated ? `${pct}%` : "0%" }}
                     />
                   </div>
@@ -334,7 +390,7 @@ export default function ResultCard({ result, lifespan }) {
       </div>
 
       {/* ── ZONE 4: PAYBACK TIMELINE ── */}
-      {savingsPositive && paybackYears && paybackPct !== null && (
+      {primarySavingsPositive && paybackYears && paybackPct !== null && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-6">
           <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-5">
             ⏳ Payback Timeline
@@ -383,14 +439,131 @@ export default function ResultCard({ result, lifespan }) {
         </div>
       )}
 
-      {/* Insight when savings are negative */}
-      {!savingsPositive && solarInsight && (
+      {/* Insight when savings are zero */}
+      {!primarySavingsPositive && solarInsight && (
         <div className="bg-amber-50 border border-amber-100 rounded-2xl px-6 py-5">
           <p className="text-sm text-amber-700 leading-relaxed">
             💡 {solarInsight}
           </p>
         </div>
       )}
+
+      {/* ── DIAGNOSTIC CARD: when solar is more expensive than comparison source ── */}
+      {comparison.savingsPerYear < 0 &&
+        (!hasBothSources || (comparison.savingsVsReality ?? 0) < 0) && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl overflow-hidden">
+            {/* Header */}
+            <div className="flex items-start gap-4 px-6 py-5 border-b border-amber-100">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0 mt-0.5">
+                <AlertTriangle
+                  size={18}
+                  className="text-amber-600"
+                  strokeWidth={1.8}
+                />
+              </div>
+              <div>
+                <p className="font-display font-bold text-amber-900 text-base">
+                  Solar is more expensive than{" "}
+                  {comparison.comparedAgainst ?? "your current source"} at this
+                  usage level
+                </p>
+                <p className="text-amber-700 text-sm mt-1 leading-relaxed">
+                  Your annualised solar cost exceeds what you'd pay on{" "}
+                  {(comparison.comparedAgainst ?? "grid").toLowerCase()}. This
+                  usually means the system is oversized for your current load,
+                  or your load entry is incomplete.
+                </p>
+              </div>
+            </div>
+
+            {/* Numbers breakdown */}
+            <div className="grid grid-cols-2 divide-x divide-amber-100 border-b border-amber-100">
+              <div className="px-6 py-4">
+                <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-1">
+                  Solar annualised cost
+                </p>
+                <p className="font-display font-bold text-amber-900 text-xl">
+                  {fmtShort(solar.annualCost)}
+                  <span className="text-sm font-normal text-amber-600">
+                    /yr
+                  </span>
+                </p>
+                <p className="text-xs text-amber-600 mt-0.5">
+                  ₦{Math.round(solar.costPerKWh)}/kWh
+                </p>
+              </div>
+              <div className="px-6 py-4">
+                <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-1">
+                  {comparison.comparedAgainst ?? "Grid"} annual cost
+                </p>
+                <p className="font-display font-bold text-amber-900 text-xl">
+                  {fmtShort(
+                    comparison.comparedAgainst === "Generator"
+                      ? generator?.annualCost
+                      : grid?.annualCost,
+                  )}
+                  <span className="text-sm font-normal text-amber-600">
+                    /yr
+                  </span>
+                </p>
+                <p className="text-xs text-amber-600 mt-0.5">
+                  currently cheaper by{" "}
+                  {fmtShort(Math.abs(comparison.savingsPerYear))}/yr
+                </p>
+              </div>
+            </div>
+
+            {/* What to do */}
+            <div className="px-6 py-5 space-y-3">
+              <p className="text-xs font-bold text-amber-700 uppercase tracking-wide">
+                What you can do
+              </p>
+              <ul className="space-y-2 text-sm text-amber-800">
+                <li className="flex items-start gap-2">
+                  <ArrowRight
+                    size={14}
+                    className="text-amber-500 mt-0.5 shrink-0"
+                  />
+                  <span>
+                    <strong>Add more appliances</strong> — if you left out
+                    devices like AC, pumps, or office equipment, your real load
+                    is higher and solar becomes more competitive.
+                  </span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <ArrowRight
+                    size={14}
+                    className="text-amber-500 mt-0.5 shrink-0"
+                  />
+                  <span>
+                    <strong>Reduce the system CAPEX</strong> — a smaller,
+                    cheaper system sized to your actual load will have a better
+                    cost-per-kWh.
+                    {comparison.breakEvenCapex != null && (
+                      <span className="block mt-1 font-semibold text-amber-900">
+                        At your current load, a system costing up to{" "}
+                        {fmtShort(comparison.breakEvenCapex)} would break even
+                        with{" "}
+                        {(comparison.comparedAgainst ?? "grid").toLowerCase()}.
+                      </span>
+                    )}
+                  </span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <ArrowRight
+                    size={14}
+                    className="text-amber-500 mt-0.5 shrink-0"
+                  />
+                  <span>
+                    <strong>Check your grid tariff</strong> — if you're on a
+                    higher NERC band (Band A ≈ ₦209/kWh), solar becomes
+                    significantly more attractive.
+                  </span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        )}
 
       {/* ── ZONE 5: FINAL CTA ── */}
       <div className="bg-teal-600 rounded-2xl px-6 py-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -401,7 +574,7 @@ export default function ResultCard({ result, lifespan }) {
           <div>
             <p className="font-display font-bold text-white text-lg leading-tight">
               {comparison.cheapestSource === "Solar"
-                ? `Go Solar — save ${fmtShort(comparison.savingsPerYear)}/yr`
+                ? `Go Solar — save ${fmtShort(primarySavings)}/yr`
                 : `${comparison.cheapestSource} is your best option right now`}
             </p>
             <p className="text-teal-200 text-sm mt-0.5">
@@ -421,9 +594,17 @@ export default function ResultCard({ result, lifespan }) {
         <p className="text-xs text-gray-400 leading-relaxed">
           ℹ️ These are indicative estimates to support decision-making, not
           guaranteed prices or savings. Generator costs include a 10% overhead
-          for maintenance, oil changes, and servicing. Grid tariffs, fuel
-          prices, and solar costs vary by location, supplier, and market
-          conditions.
+          for maintenance, oil changes, and servicing.
+          {energy.gridHoursPerDay < 24 && (
+            <>
+              {" "}
+              Grid costs cover only the {energy.gridHoursPerDay}hrs/day of grid
+              supply entered; generator costs cover the remaining{" "}
+              {24 - energy.gridHoursPerDay}hrs. Solar covers the full 24hrs.
+            </>
+          )}{" "}
+          Grid tariffs, fuel prices, and solar costs vary by location, supplier,
+          and market conditions.
         </p>
       </div>
     </div>

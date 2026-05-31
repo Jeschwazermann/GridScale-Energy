@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import {
   ArrowLeft,
   Plus,
@@ -9,8 +9,8 @@ import {
   Sun,
   Zap,
   Fuel,
+  Clock,
 } from "lucide-react";
-import ResultCard from "../components/ResultCard";
 import { calculate } from "../components/services/api";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
@@ -78,14 +78,40 @@ const GEN_EFFICIENCY_OPTIONS = [
   { label: "Large diesel gen (7.5kVA+) — ~3.5 kWh/L", value: "3.5" },
 ];
 
+/* ─── Grid hours options ─────────────────────────────────────── */
+// 0 = no grid at all (generator-only users)
+// 24 = full grid supply (no generator needed)
+const GRID_HOUR_OPTIONS = [0, 2, 4, 6, 8, 12, 16, 20, 24];
+
+/* ─── Grid hours contextual label ───────────────────────────── */
+const gridHoursLabel = (hrs, includeGrid, includeGenerator) => {
+  if (hrs === 0) {
+    return includeGenerator
+      ? "No grid — all load falls on generator (and solar as alternative)"
+      : "No grid supply selected";
+  }
+  if (hrs === 24) {
+    return "Full 24hr grid supply — no generator hours assumed";
+  }
+  if (includeGrid && includeGenerator) {
+    return `${hrs}hrs grid · ${24 - hrs}hrs generator per day`;
+  }
+  if (includeGrid) {
+    return `${hrs}hrs of grid supply daily — appliances only run during these hours`;
+  }
+  if (includeGenerator) {
+    return `${24 - hrs}hrs generator per day (${hrs}hrs assumed grid / off)`;
+  }
+  return `${hrs}hrs selected`;
+};
+
 /* ─── Smart CAPEX suggestion ─────────────────────────────────── */
 const suggestCapex = (annualKWh) => {
   if (!annualKWh || annualKWh <= 0) return null;
   const dailyWh = (annualKWh * 1000) / 365;
-  const peakSunHours = 5;
-  const safetyFactor = 1.3;
-  const systemWatts = (dailyWh / peakSunHours) * safetyFactor;
-  return Math.round((systemWatts * 2500) / 100_000) * 100_000;
+  const systemWatts = (dailyWh / 5) * 1.3;
+  const rounded = Math.round((systemWatts * 2500) / 100_000) * 100_000;
+  return rounded > 0 ? rounded : null;
 };
 
 /* ─── Shared styles ──────────────────────────────────────────── */
@@ -249,6 +275,7 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
         placeholder="Watts"
         value={appliance.power}
         onChange={(e) => onChange(index, e)}
+        min="0"
         className={inp}
       />
       <input
@@ -257,6 +284,8 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
         placeholder="Hrs/day"
         value={appliance.hours}
         onChange={(e) => onChange(index, e)}
+        min="0"
+        max="24"
         className={inp}
       />
       <input
@@ -265,6 +294,8 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
         placeholder="Days/yr"
         value={appliance.days}
         onChange={(e) => onChange(index, e)}
+        min="0"
+        max="365"
         className={inp}
       />
       <input
@@ -273,6 +304,7 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
         placeholder="Units"
         value={appliance.units}
         onChange={(e) => onChange(index, e)}
+        min="1"
         className={inp}
       />
 
@@ -291,31 +323,45 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
 const emptyAppliance = { name: "", power: "", hours: "", days: "", units: "1" };
 
 export default function CalculatorPage() {
-  const [appliances, setAppliances] = useState([{ ...emptyAppliance }]);
-  const [includeGrid, setIncludeGrid] = useState(false);
-  const [includeGenerator, setIncludeGenerator] = useState(false);
-  const [settings, setSettings] = useState({
-    gridTariff: "",
-    fuelPrice: "",
-    efficiency: "",
-    capex: "",
-    lifespan: "",
-  });
-  const [capexSuggestion, setCapexSuggestion] = useState(null);
-  const [result, setResult] = useState(null);
+  const navigate = useNavigate();
+  const { state: locationState } = useLocation();
+  const savedForm = locationState?.formValues;
+
+  const [appliances, setAppliances] = useState(
+    savedForm?.appliances ?? [{ ...emptyAppliance }],
+  );
+  const [includeGrid, setIncludeGrid] = useState(
+    savedForm?.includeGrid ?? false,
+  );
+  const [includeGenerator, setIncludeGenerator] = useState(
+    savedForm?.includeGenerator ?? false,
+  );
+  const [settings, setSettings] = useState(
+    savedForm?.settings ?? {
+      gridTariff: "",
+      fuelPrice: "",
+      efficiency: "",
+      capex: "",
+      lifespan: "",
+      gridHours: null,
+    },
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  /* Recompute CAPEX suggestion whenever appliances change */
-  useEffect(() => {
+  /* ── Show grid hours card whenever at least one source is toggled ── */
+  const showGridHours = includeGrid || includeGenerator;
+
+  /* ── Smart CAPEX ── */
+  const capexSuggestion = useMemo(() => {
     const annualKWh = appliances.reduce((sum, a) => {
-      const power = parseFloat(a.power) || 0;
-      const hours = parseFloat(a.hours) || 0;
-      const days = parseFloat(a.days) || 0;
-      const units = parseFloat(a.units) || 1;
-      return sum + (power * hours * days * units) / 1000;
+      const p = parseFloat(a.power) || 0;
+      const h = parseFloat(a.hours) || 0;
+      const d = parseFloat(a.days) || 0;
+      const u = parseFloat(a.units) || 1;
+      return sum + (p * h * d * u) / 1000;
     }, 0);
-    setCapexSuggestion(suggestCapex(annualKWh));
+    return suggestCapex(annualKWh);
   }, [appliances]);
 
   const applyCapexSuggestion = () => {
@@ -325,8 +371,13 @@ export default function CalculatorPage() {
 
   const handleApplianceChange = (index, e) => {
     const { name, value } = e.target;
+    const numeric = ["power", "hours", "days", "units"];
+    const sanitized =
+      numeric.includes(name) && parseFloat(value) < 0 ? "0" : value;
     setAppliances((prev) =>
-      prev.map((item, i) => (i === index ? { ...item, [name]: value } : item)),
+      prev.map((item, i) =>
+        i === index ? { ...item, [name]: sanitized } : item,
+      ),
     );
   };
 
@@ -344,7 +395,6 @@ export default function CalculatorPage() {
   const handleSubmit = async () => {
     setError(null);
 
-    // Require at least one comparison source
     if (!includeGrid && !includeGenerator)
       return setError(
         "Toggle on at least one comparison source — Grid or Generator.",
@@ -357,7 +407,7 @@ export default function CalculatorPage() {
     );
     if (incomplete)
       return setError(
-        "Please complete all fields for each appliance — Power, Hrs/Day, Days/Year, and Units.",
+        "Please complete all fields for each appliance — Power, Hrs used per day, Days/Year, and Units.",
       );
 
     if (includeGrid && !settings.gridTariff)
@@ -368,6 +418,13 @@ export default function CalculatorPage() {
     if (includeGenerator && (!settings.fuelPrice || !settings.efficiency))
       return setError(
         "Enter fuel price and select a generator size to include generator in the comparison.",
+      );
+
+    // Grid hours always required when any source is toggled —
+    // it affects how much of the load each source is responsible for.
+    if (settings.gridHours == null)
+      return setError(
+        "Select how many hours of grid supply you get daily so we can split your load accurately.",
       );
 
     if (!settings.capex || !settings.lifespan)
@@ -386,21 +443,25 @@ export default function CalculatorPage() {
         })),
         capex: parseFloat(settings.capex),
         lifespan: parseFloat(settings.lifespan),
+        gridHours: parseFloat(settings.gridHours),
         ...(includeGrid && { gridTariff: parseFloat(settings.gridTariff) }),
         ...(includeGenerator && {
           fuelPrice: parseFloat(settings.fuelPrice),
           efficiency: parseFloat(settings.efficiency),
         }),
       };
+
       const res = await calculate(payload);
-      setResult(res);
-      setTimeout(
-        () =>
-          document
-            .getElementById("results")
-            ?.scrollIntoView({ behavior: "smooth" }),
-        100,
-      );
+
+      navigate("/calculator/results", {
+        state: {
+          result: res,
+          lifespan: parseFloat(settings.lifespan),
+          suggestedCapex: capexSuggestion,
+          currentCapex: parseFloat(settings.capex),
+          formValues: { appliances, settings, includeGrid, includeGenerator },
+        },
+      });
     } catch {
       setError("Something went wrong. Please check your inputs and try again.");
     } finally {
@@ -431,7 +492,7 @@ export default function CalculatorPage() {
       </div>
 
       <div className="max-w-3xl mx-auto px-6 py-10 space-y-6">
-        {/* Appliances */}
+        {/* ── Appliances ── */}
         <SectionCard
           icon={Zap}
           iconBg="bg-yellow-50"
@@ -443,7 +504,7 @@ export default function CalculatorPage() {
             {[
               "Appliance",
               "Power (W)",
-              "Hrs/Day",
+              "Hrs used/day",
               "Days/Year",
               "Units",
               "",
@@ -483,7 +544,7 @@ export default function CalculatorPage() {
           </div>
         </SectionCard>
 
-        {/* Comparison sources label */}
+        {/* ── Comparison sources label ── */}
         <div className="pt-2">
           <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">
             Comparison Sources
@@ -494,7 +555,7 @@ export default function CalculatorPage() {
           </p>
         </div>
 
-        {/* Grid */}
+        {/* ── Grid ── */}
         <SectionCard
           icon={Zap}
           iconBg="bg-blue-50"
@@ -507,7 +568,7 @@ export default function CalculatorPage() {
         >
           <Field
             label="Tariff — cost per kWh (₦)"
-            hint="Check your NERC band on your utility bill. Typical rates: Band A ≈ ₦209 · Band B ≈ ₦109 · Band D ≈ ₦68."
+            hint="Check your NERC band on your utility bill. Band A ≈ ₦209 · Band B ≈ ₦109 · Band D ≈ ₦68."
           >
             <input
               type="number"
@@ -520,7 +581,7 @@ export default function CalculatorPage() {
           </Field>
         </SectionCard>
 
-        {/* Generator */}
+        {/* ── Generator ── */}
         <SectionCard
           icon={Fuel}
           iconBg="bg-orange-50"
@@ -568,7 +629,62 @@ export default function CalculatorPage() {
           </div>
         </SectionCard>
 
-        {/* Solar — always on */}
+        {/* ── Daily Power Supply ─────────────────────────────────────────
+            Shown whenever at least one source is toggled.
+            This is a shared input — it feeds both grid and generator cost
+            engines regardless of which combination is selected.
+        ─────────────────────────────────────────────────────────────── */}
+        {showGridHours && (
+          <SectionCard
+            icon={Clock}
+            iconBg="bg-purple-50"
+            iconColor="text-purple-500"
+            title="Daily Power Supply"
+            subtitle={
+              includeGrid && includeGenerator
+                ? "How many hours of NEPA do you typically get? The remaining hours are assumed to be generator time."
+                : includeGrid
+                  ? "How many hours of NEPA do you get daily? Your appliances only consume grid electricity during these hours."
+                  : "How many hours of generator do you run daily? Select 0 if you have no grid supply at all."
+            }
+          >
+            {/* 3×3 button grid — 0 through 24 */}
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+              {GRID_HOUR_OPTIONS.map((hrs) => (
+                <button
+                  key={hrs}
+                  type="button"
+                  onClick={() =>
+                    setSettings((prev) => ({ ...prev, gridHours: hrs }))
+                  }
+                  className={`py-3 rounded-xl text-sm font-semibold border transition-all ${
+                    settings.gridHours === hrs
+                      ? "bg-teal-600 border-teal-600 text-white shadow-sm"
+                      : "bg-white border-gray-200 text-gray-700 hover:border-teal-300 hover:text-teal-700"
+                  }`}
+                >
+                  {hrs === 0 ? "None" : hrs === 24 ? "Full" : `${hrs}hrs`}
+                </button>
+              ))}
+            </div>
+
+            {/* Contextual label after selection */}
+            {settings.gridHours != null && (
+              <div className="mt-4 flex items-start gap-2 bg-purple-50 border border-purple-100 rounded-xl px-4 py-3">
+                <Clock size={13} className="text-purple-500 shrink-0 mt-0.5" />
+                <p className="text-sm font-medium text-purple-700 leading-snug">
+                  {gridHoursLabel(
+                    settings.gridHours,
+                    includeGrid,
+                    includeGenerator,
+                  )}
+                </p>
+              </div>
+            )}
+          </SectionCard>
+        )}
+
+        {/* ── Solar — always on ── */}
         <SectionCard
           icon={Sun}
           iconBg="bg-teal-50"
@@ -636,16 +752,6 @@ export default function CalculatorPage() {
           <BarChart3 size={18} />
           {loading ? "Calculating…" : "Calculate My Energy Costs"}
         </button>
-
-        {/* Results */}
-        {result && (
-          <div id="results">
-            <ResultCard
-              result={result}
-              lifespan={parseFloat(settings.lifespan)}
-            />
-          </div>
-        )}
       </div>
 
       <Footer />

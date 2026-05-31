@@ -30,8 +30,24 @@ export const calculate = async (req, res, next) => {
       return next(err);
     }
 
-    // Energy
-    const energy = calculateEnergy(data.appliances);
+    // gridHours is required when both sources are toggled — that's when the split matters
+    if (hasGrid && hasGenerator) {
+      if (data.gridHours == null || isNaN(data.gridHours)) {
+        const err = new Error(
+          "Select how many hours of grid supply you get daily — this is needed to split your load accurately.",
+        );
+        err.status = 400;
+        return next(err);
+      }
+    }
+
+    // When both sources are present, split the load by grid availability.
+    // When only one source is toggled, no split is needed — pass 24 so gridKWh = annualKWh.
+    const gridHoursPerDay =
+      hasGrid && hasGenerator ? parseFloat(data.gridHours) : 24;
+
+    // Energy — with load split
+    const energy = calculateEnergy(data.appliances, gridHoursPerDay);
 
     // Costs — only calculate what was provided
     const grid = hasGrid ? gridCost(energy, data.gridTariff) : null;
