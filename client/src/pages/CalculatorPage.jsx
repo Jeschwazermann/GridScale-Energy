@@ -568,7 +568,7 @@ export default function CalculatorPage() {
         >
           <Field
             label="Tariff — cost per kWh (₦)"
-            hint="Check your NERC band on your utility bill. Band A ≈ ₦209 · Band B ≈ ₦109 · Band D ≈ ₦68."
+            hint="Check your NERC band on your utility bill. Band A ≈ ₦210 · Band B ≈ ₦68 · Band C ≈ ₦54 · Band D ≈ ₦45."
           >
             <input
               type="number"
