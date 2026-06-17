@@ -3,7 +3,7 @@ import { useReveal } from "../hooks/useReveal";
 const testimonials = [
   {
     quote:
-      "I was spending ₦210,000 a month on diesel. SolarSave showed me my payback was under 7 years. I got the system installed 3 months ago — already seeing the difference.",
+      "I was spending ₦210,000 a month on diesel. GridScale Africa showed me my payback was under 7 years. I got the system installed 3 months ago — already seeing the difference.",
     name: "Emeka Okonkwo",
     role: "Business Owner, Enugu",
     photo: "/images/testimonial-emeka.jpg",
@@ -21,7 +21,7 @@ const testimonials = [
   },
   {
     quote:
-      "I used to argue with my landlord about the gen bill. Now I have data. SolarSave gave me a breakdown I could actually print and show him.",
+      "I used to argue with my landlord about the gen bill. Now I have data. GridScale Africa gave me a breakdown I could actually print and show him.",
     name: "Tunde Adesanya",
     role: "Tenant, Lagos",
     photo: "/images/testimonial-tunde.jpg",

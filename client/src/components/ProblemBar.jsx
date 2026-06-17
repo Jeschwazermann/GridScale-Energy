@@ -19,7 +19,7 @@ const stats = [
   {
     value: "22×",
     label: "Solar can be up to 22× cheaper per kWh than generator",
-    sub: "SolarSave internal estimates",
+    sub: "GridScale internal estimates",
   },
 ];
 
@@ -43,7 +43,9 @@ export default function ProblemBar() {
               className="bg-gray-950 px-6 py-8 flex flex-col gap-3 reveal"
               style={{ transitionDelay: `${i * 100}ms` }}
             >
-              <p className="stat-value font-display text-4xl font-extrabold">{s.value}</p>
+              <p className="stat-value font-display text-4xl font-extrabold">
+                {s.value}
+              </p>
               <p className="text-gray-300 text-sm leading-snug">{s.label}</p>
               <p className="text-gray-600 text-xs">{s.sub}</p>
             </div>

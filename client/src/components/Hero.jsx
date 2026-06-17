@@ -64,9 +64,9 @@ export default function Hero() {
             </h1>
 
             <p className="text-teal-100 text-lg leading-relaxed mb-10 max-w-md">
-              Grid. Generator. Solar. SolarSave calculates exactly what each
-              energy source costs you — and tells you which one makes financial
-              sense for your home or business.
+              Grid. Generator. Solar. Our Cost Calculator calculates exactly
+              what each energy source costs you — and tells you which one makes
+              financial sense for your home or business.
             </p>
 
             <div className="flex flex-wrap gap-4">

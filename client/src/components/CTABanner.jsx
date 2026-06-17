@@ -37,8 +37,9 @@ export default function CTABanner() {
               Ready to see what you're really paying?
             </h2>
             <p className="text-teal-100 text-lg mb-10 max-w-xl mx-auto reveal">
-              Enter your appliances and energy inputs. SolarSave does the rest —
-              giving you a clear, honest cost comparison in under a minute.
+              Enter your appliances and energy inputs. Our cost calculator does
+              the rest — giving you a clear, honest cost comparison in under a
+              minute.
             </p>
             <Link
               to="/calculator"
