@@ -1,4 +1,5 @@
 import { supabaseForUser } from "../lib/supabase.js";
+import {AppError} from "../utils/AppError.js";
 
 /* GET /api/installer/customers */
 export const getCustomers = async (req, res, next) => {
@@ -23,8 +24,7 @@ export const createCustomer = async (req, res, next) => {
     const { name, phone, email, state, lga, notes } = req.body;
 
     if (!name || !phone) {
-      const err = new Error("Customer name and phone are required.");
-      err.status = 400;
+      const err = new AppError("Customer name and phone are required.", 400);
       return next(err);
     }
 
@@ -63,7 +63,7 @@ export const getCustomer = async (req, res, next) => {
       .single();
 
     if (error || !data) {
-      const err = new Error("Customer not found.");
+      const err = new AppError("Customer not found.", 404);
       err.status = 404;
       return next(err);
     }
@@ -98,8 +98,7 @@ export const updateCustomer = async (req, res, next) => {
       .single();
 
     if (error || !data) {
-      const err = new Error("Customer not found.");
-      err.status = 404;
+      const err = new AppError("Customer not found or update failed.", 404);
       return next(err);
     }
 

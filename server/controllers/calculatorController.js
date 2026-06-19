@@ -3,6 +3,7 @@ import { gridCost } from "../services/gridService.js";
 import { generatorCost } from "../services/generatorService.js";
 import { solarCost } from "../services/solarService.js";
 import { compareCosts } from "../services/comparisonService.js";
+import {AppError} from "../utils/AppError.js";
 
 export const calculate = async (req, res, next) => {
   try {
@@ -10,8 +11,7 @@ export const calculate = async (req, res, next) => {
 
     /* ── Appliance validation ────────────────────────────────────── */
     if (!data.appliances || data.appliances.length === 0) {
-      const err = new Error("At least one appliance is required.");
-      err.status = 400;
+      const err = new AppError("At least one appliance is required.", 400);
       return next(err);
     }
 
@@ -24,23 +24,21 @@ export const calculate = async (req, res, next) => {
       !isNaN(data.efficiency);
 
     if (!hasGrid && !hasGenerator) {
-      const err = new Error(
+      const err = new AppError(
         "Include at least one comparison source — Grid or Generator.",
+        400
       );
-      err.status = 400;
       return next(err);
     }
 
     /* ── Solar inputs validation ─────────────────────────────────── */
     if (!data.capex || isNaN(data.capex)) {
-      const err = new Error("Solar system CAPEX is required.");
-      err.status = 400;
+      const err = new AppError("Solar system CAPEX is required.", 400);
       return next(err);
     }
 
     if (!data.lifespan || isNaN(data.lifespan)) {
-      const err = new Error("Solar system lifespan is required.");
-      err.status = 400;
+      const err = new AppError("Solar system lifespan is required.", 400);
       return next(err);
     }
 
@@ -49,10 +47,10 @@ export const calculate = async (req, res, next) => {
        are present. gridHours drives the load split in energyService
        regardless of how many sources are active.                    */
     if (data.gridHours == null || isNaN(data.gridHours)) {
-      const err = new Error(
+      const err = new AppError(
         "Select how many hours of grid supply you get daily — this is needed to calculate your load accurately.",
+        400
       );
-      err.status = 400;
       return next(err);
     }
 

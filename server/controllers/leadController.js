@@ -1,4 +1,5 @@
 import { supabaseAdmin, supabaseForUser } from "../lib/supabase.js";
+import { AppError } from "../utils/AppError.js";
 
 /* POST /api/leads  — PUBLIC, no auth required
    Consumer submits "Get Solar Quote" from the results page. */
@@ -7,8 +8,7 @@ export const submitLead = async (req, res, next) => {
     const { name, phone, email, state, lga, calculatorResult } = req.body;
 
     if (!name || !phone) {
-      const err = new Error("Name and phone number are required.");
-      err.status = 400;
+      const err = new AppError("Name and phone number are required.", 400);
       return next(err);
     }
 
@@ -70,8 +70,7 @@ export const claimLead = async (req, res, next) => {
       .single();
 
     if (error || !data) {
-      const err = new Error("Lead not found or already claimed.");
-      err.status = 409;
+      const err = new AppError("Lead not found or already claimed.", 409);
       return next(err);
     }
 
@@ -94,8 +93,7 @@ export const convertLead = async (req, res, next) => {
       .single();
 
     if (error || !data) {
-      const err = new Error("Lead not found.");
-      err.status = 404;
+      const err = new AppError("Lead not found.", 404);
       return next(err);
     }
 

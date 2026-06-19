@@ -1,4 +1,5 @@
 import { sizeSystem } from "../services/sizingService.js";
+import { AppError } from "../utils/AppError.js";
 
 /* POST /api/installer/sizing */
 export const getSizing = (req, res, next) => {
@@ -6,8 +7,7 @@ export const getSizing = (req, res, next) => {
     const { effectiveDailyKWh } = req.body;
 
     if (!effectiveDailyKWh || isNaN(effectiveDailyKWh)) {
-      const err = new Error("effectiveDailyKWh is required.");
-      err.status = 400;
+      const err = new AppError("effectiveDailyKWh is required.", 400);
       return next(err);
     }
 

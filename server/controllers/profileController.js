@@ -1,4 +1,5 @@
 import { supabaseForUser } from "../lib/supabase.js";
+import {AppError} from "../utils/AppError.js";
 
 /* GET /api/installer/profile */
 export const getProfile = async (req, res, next) => {
@@ -11,8 +12,7 @@ export const getProfile = async (req, res, next) => {
       .single();
 
     if (error || !data) {
-      const err = new Error("Profile not found.");
-      err.status = 404;
+      const err = new AppError("Profile not found.", 404);
       return next(err);
     }
 
@@ -68,8 +68,7 @@ export const uploadLogo = async (req, res, next) => {
     const { base64, mimeType } = req.body;
 
     if (!base64 || !mimeType) {
-      const err = new Error("base64 image data and mimeType are required.");
-      err.status = 400;
+      const err = new AppError("base64 image data and mimeType are required.", 400);
       return next(err);
     }
 

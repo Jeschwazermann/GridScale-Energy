@@ -4,6 +4,7 @@ import { generatorCost } from "../services/generatorService.js";
 import { solarCost } from "../services/solarService.js";
 import { compareCosts } from "../services/comparisonService.js";
 import { supabaseForUser } from "../lib/supabase.js";
+import { AppError } from "../utils/AppError.js";
 
 /* POST /api/installer/assessments */
 export const createAssessment = async (req, res, next) => {
@@ -20,15 +21,13 @@ export const createAssessment = async (req, res, next) => {
       .single();
 
     if (customerError || !customer) {
-      const err = new Error("Customer not found.");
-      err.status = 404;
+      const err = new AppError("Customer not found.", 404);
       return next(err);
     }
 
     /* ── Validate required inputs ── */
     if (!data.appliances || data.appliances.length === 0) {
-      const err = new Error("At least one appliance is required.");
-      err.status = 400;
+      const err = new AppError("At least one appliance is required.", 400);
       return next(err);
     }
 
@@ -40,14 +39,12 @@ export const createAssessment = async (req, res, next) => {
       !isNaN(data.efficiency);
 
     if (!hasGrid && !hasGenerator) {
-      const err = new Error("Include at least one comparison source.");
-      err.status = 400;
+      const err = new AppError("Include at least one comparison source.", 400);
       return next(err);
     }
 
     if (data.gridHours == null || isNaN(data.gridHours)) {
-      const err = new Error("Grid hours per day is required.");
-      err.status = 400;
+      const err = new AppError("Grid hours per day is required.", 400);
       return next(err);
     }
 
@@ -109,8 +106,7 @@ export const getAssessment = async (req, res, next) => {
       .single();
 
     if (error || !data) {
-      const err = new Error("Assessment not found.");
-      err.status = 404;
+      const err = new AppError("Assessment not found.", 404);
       return next(err);
     }
 

@@ -1,12 +1,11 @@
 import { supabaseAdmin } from "../lib/supabase.js";
+import { AppError } from "../utils/AppError.js";
 
 export const requireAuth = async (req, res, next) => {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res
-      .status(401)
-      .json({ error: "Missing or invalid authorization header." });
+    return next(new AppError("Missing or invalid authorization header.", 401));
   }
 
   const token = authHeader.replace("Bearer ", "");
@@ -17,12 +16,17 @@ export const requireAuth = async (req, res, next) => {
   } = await supabaseAdmin.auth.getUser(token);
 
   if (error || !user) {
-    return res
-      .status(401)
-      .json({ error: "Unauthorized. Please sign in again." });
+    // error.message gives the real Supabase reason (e.g. "Invalid API key",
+    // "JWT expired") — passed through so it lands in the logs, not just
+    // a generic message.
+    return next(
+      new AppError(
+        error?.message || "Unauthorized. Please sign in again.",
+        401,
+      ),
+    );
   }
 
-  /* Attach user and token to request for downstream use */
   req.user = user;
   req.token = token;
   next();

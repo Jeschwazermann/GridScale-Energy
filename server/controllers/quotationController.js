@@ -1,4 +1,5 @@
 import { supabaseForUser } from "../lib/supabase.js";
+import {AppError} from "../utils/AppError.js";
 
 /* POST /api/installer/quotations */
 export const createQuotation = async (req, res, next) => {
@@ -7,10 +8,10 @@ export const createQuotation = async (req, res, next) => {
       req.body;
 
     if (!assessmentId || !lineItems || lineItems.length === 0) {
-      const err = new Error(
+      const err = new AppError(
         "assessmentId and at least one line item are required.",
+        400
       );
-      err.status = 400;
       return next(err);
     }
 
@@ -25,8 +26,7 @@ export const createQuotation = async (req, res, next) => {
       .single();
 
     if (aErr || !assessment) {
-      const err = new Error("Assessment not found.");
-      err.status = 404;
+      const err = new AppError("Assessment not found.", 404);
       return next(err);
     }
 
@@ -71,8 +71,7 @@ export const getQuotation = async (req, res, next) => {
       .single();
 
     if (error || !data) {
-      const err = new Error("Quotation not found.");
-      err.status = 404;
+      const err = new AppError("Quotation not found.", 404);
       return next(err);
     }
 
@@ -113,8 +112,7 @@ export const updateQuotation = async (req, res, next) => {
       .single();
 
     if (error || !data) {
-      const err = new Error("Quotation not found.");
-      err.status = 404;
+      const err = new AppError("Quotation not found.", 404);
       return next(err);
     }
 
