@@ -15,7 +15,7 @@
 
 import { Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
-//import ProtectedRoute from "./components/ProtectedRoute";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 import LandingPage from "./pages/LandingPage";
 import CalculatorPage from "./pages/CalculatorPage";
@@ -23,8 +23,8 @@ import ResultsPage from "./pages/ResultsPage";
 
 import LoginPage from "./pages/installer/LoginPage";
 import SignupPage from "./pages/installer/SignupPage";
-// import DashboardHome from "./pages/installer/DashboardHome";
-// import CustomerList from "./pages/installer/CustomerList";
+import DashboardHome from "./pages/installer/DashboardHome";
+import CustomerList from "./pages/installer/CustomerList";
 // import CustomerDetail from "./pages/installer/CustomerDetail";
 // import NewAssessment from "./pages/installer/NewAssessment";
 // import LeadsPage from "./pages/installer/LeadsPage";
@@ -43,7 +43,7 @@ export default function App() {
         <Route path="/installer/login" element={<LoginPage />} />
         <Route path="/installer/signup" element={<SignupPage />} />
 
-        {/* ── Installer app (protected) ──
+        {/* ── Installer app (protected) ── */}
         <Route
           path="/installer/dashboard"
           element={
@@ -60,31 +60,31 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-        <Route
+        {/* <Route
           path="/installer/customers/:id"
           element={
             <ProtectedRoute>
               <CustomerDetail />
             </ProtectedRoute>
           }
-        />
-        <Route
+        /> */}
+        {/* <Route
           path="/installer/new-assessment"
           element={
             <ProtectedRoute>
               <NewAssessment />
             </ProtectedRoute>
           }
-        />
-        <Route
+        /> */}
+        {/* <Route
           path="/installer/leads"
           element={
             <ProtectedRoute>
               <LeadsPage />
             </ProtectedRoute>
           }
-        />
-        <Route
+        /> */}
+        {/* <Route
           path="/installer/settings"
           element={
             <ProtectedRoute>
