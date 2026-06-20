@@ -11,7 +11,7 @@ import {
   Fuel,
   Clock,
 } from "lucide-react";
-import { calculate } from "../components/services/api";
+import { calculate } from "../services/api";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 

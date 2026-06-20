@@ -38,11 +38,9 @@ export default function App() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/calculator" element={<CalculatorPage />} />
         <Route path="/calculator/results" element={<ResultsPage />} />
-
         {/* ── Installer auth ── */}
         <Route path="/installer/login" element={<LoginPage />} />
         <Route path="/installer/signup" element={<SignupPage />} />
-
         {/* ── Installer app (protected) ── */}
         <Route
           path="/installer/dashboard"
@@ -67,24 +65,24 @@ export default function App() {
               <CustomerDetail />
             </ProtectedRoute>
           }
-        /> */}
-        {/* <Route
+        />
+        <Route
           path="/installer/new-assessment"
           element={
             <ProtectedRoute>
               <NewAssessment />
             </ProtectedRoute>
           }
-        /> */}
-        {/* <Route
+        />{" "}
+        <Route
           path="/installer/leads"
           element={
             <ProtectedRoute>
               <LeadsPage />
             </ProtectedRoute>
           }
-        /> */}
-        {/* <Route
+        />
+        <Route
           path="/installer/settings"
           element={
             <ProtectedRoute>
