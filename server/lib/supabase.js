@@ -3,8 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 
 dotenv.config();
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseService = process.env.SUPABASE_SERVICE_KEY;
+//const supabaseUrl = process.env.SUPABASE_URL;
+//const supabaseService = process.env.SUPABASE_SERVICE_KEY;
 
 if (!supabaseUrl || !supabaseService) {
   throw new Error(
