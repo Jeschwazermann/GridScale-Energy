@@ -1,7 +1,6 @@
 import axios from "axios";
 import { supabase } from "../lib/supabase";
 
-/* ── Axios instance pointing at Express backend ── */
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "http://localhost:3000",
 });

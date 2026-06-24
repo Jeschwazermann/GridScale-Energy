@@ -360,7 +360,7 @@ export default function DashboardHome() {
                 <p className="text-sm font-medium text-gray-400">
                   No new leads yet
                 </p>
-                <p className="text-xs text-gray-400 mt-1 max-w-[180px] mx-auto">
+                <p className="text-xs text-gray-400 mt-1 max-w-45 mx-auto">
                   Leads come from users who click "Get Solar Quote" on the
                   calculator
                 </p>
