@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import InstallerLayout from "../../layouts/installer";
 import { useInstallerStats } from "../../hooks/useInstallerStats";
-import { useAuth } from "../../contexts/AuthContext";
+import { useAuth } from "../../contexts/useAuth";
 import { claimLead } from "../../services/installerApi";
 
 /* ─── Formatters ─────────────────────────────────────────────── */
@@ -270,7 +270,7 @@ export default function DashboardHome() {
                     (a, b) => new Date(b.created_at) - new Date(a.created_at),
                   )[0];
                   const savings =
-                    latestAssessment?.result?.comparison?.savingsPerYear;
+                    latestAssessment?.results?.comparison?.savingsPerYear;
 
                   return (
                     <Link

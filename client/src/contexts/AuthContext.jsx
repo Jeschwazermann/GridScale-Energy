@@ -1,7 +1,6 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
-
-const AuthContext = createContext(null);
+import { AuthContext } from "./AuthContext.js";
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -14,9 +13,17 @@ export function AuthProvider({ children }) {
       .from("installers")
       .select("*")
       .eq("id", userId)
-      .single();
+      .maybeSingle();
 
     if (!error && data) setProfile(data);
+  };
+
+  /* ── Refresh profile manually (e.g. after settings save) ── */
+  const refreshProfile = async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (session?.user) await fetchProfile(session.user.id);
   };
 
   /* ── Listen to auth state changes ── */
@@ -55,6 +62,10 @@ export function AuthProvider({ children }) {
         contact_name: contactName,
       });
       if (profileError) throw profileError;
+
+      /* Fetch profile immediately after insert — don't rely on
+         onAuthStateChange which may fire before the row exists */
+      await fetchProfile(data.user.id);
     }
 
     return data;
@@ -79,15 +90,17 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, profile, loading, signUp, signIn, signOut }}
+      value={{
+        user,
+        profile,
+        loading,
+        signUp,
+        signIn,
+        signOut,
+        refreshProfile,
+      }}
     >
       {children}
     </AuthContext.Provider>
   );
 }
-
-export const useAuth = () => {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used inside AuthProvider");
-  return ctx;
-};

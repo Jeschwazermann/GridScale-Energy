@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import InstallerLayout from "../../layouts/installer";
 import { supabase } from "../../lib/supabase";
-import { useAuth } from "../../contexts/AuthContext";
+import { useAuth } from "../../contexts/useAuth";
 import { claimLead, convertLead } from "../../services/installerApi";
 
 /* ─── Status tabs ────────────────────────────────────────────── */

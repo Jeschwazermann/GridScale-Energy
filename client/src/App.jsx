@@ -1,5 +1,5 @@
 import { Routes, Route } from "react-router-dom";
-import { AuthProvider } from "./contexts/AuthContext";
+import { AuthProvider } from "./contexts/AuthContext.jsx";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 import LandingPage from "./pages/LandingPage";
@@ -10,10 +10,10 @@ import LoginPage from "./pages/installer/LoginPage";
 import SignupPage from "./pages/installer/SignupPage";
 import DashboardHome from "./pages/installer/DashboardHome";
 import CustomerList from "./pages/installer/CustomerList";
-// import CustomerDetail from "./pages/installer/CustomerDetail";
-// import NewAssessment from "./pages/installer/NewAssessment";
-// import LeadsPage from "./pages/installer/LeadsPage";
-// import SettingsPage from "./pages/installer/SettingsPage";
+import CustomerDetail from "./pages/installer/CustomerDetail";
+import NewAssessment from "./pages/installer/NewAssessment";
+import LeadsPage from "./pages/installer/LeadsPage";
+import SettingsPage from "./pages/installer/SettingsPage";
 
 export default function App() {
   return (
@@ -43,7 +43,7 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-        {/* <Route
+        <Route
           path="/installer/customers/:id"
           element={
             <ProtectedRoute>
@@ -58,7 +58,7 @@ export default function App() {
               <NewAssessment />
             </ProtectedRoute>
           }
-        />{" "}
+        />
         <Route
           path="/installer/leads"
           element={
@@ -74,7 +74,7 @@ export default function App() {
               <SettingsPage />
             </ProtectedRoute>
           }
-        /> */}
+        />
       </Routes>
     </AuthProvider>
   );

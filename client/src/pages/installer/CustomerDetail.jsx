@@ -19,7 +19,7 @@ import {
 import InstallerLayout from "../../layouts/installer";
 import ResultCard from "../../components/ResultCard";
 import { supabase } from "../../lib/supabase";
-import { useAuth } from "../../contexts/AuthContext";
+import { useAuth } from "../../contexts/useAuth";
 import {
   fetchSizing,
   createQuotation,
@@ -201,7 +201,7 @@ export default function CustomerDetail() {
 
   /* ── Selected assessment ── */
   const selectedAssessment = assessments[selectedIdx] ?? null;
-  const assessmentResult = selectedAssessment?.result ?? null;
+  const assessmentResult = selectedAssessment?.results ?? null;
   const lifespan = selectedAssessment?.settings?.lifespan ?? 25;
   const effectiveDailyKWh = assessmentResult?.energy?.effectiveDailyKWh ?? null;
 
@@ -215,7 +215,7 @@ export default function CustomerDetail() {
   const fetchSizingFor = async (assessment) => {
     if (!assessment) return;
 
-    const kwh = assessment.result?.energy?.effectiveDailyKWh ?? null;
+    const kwh = assessment.results?.energy?.effectiveDailyKWh ?? null;
     if (!kwh) return;
 
     /* Served from cache — no network call, no loading flicker. */

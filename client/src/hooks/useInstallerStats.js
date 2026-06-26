@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../lib/supabase";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth } from "../contexts/useAuth";
 
 export function useInstallerStats() {
   const { user } = useAuth();
@@ -32,7 +32,7 @@ export function useInstallerStats() {
 
         supabase
           .from("assessments")
-          .select("result")
+          .select("results")
           .eq("installer_id", user.id),
 
         supabase
@@ -48,7 +48,7 @@ export function useInstallerStats() {
 
         supabase
           .from("customers")
-          .select("*, assessments(result, created_at)")
+          .select("*, assessments(results, created_at)")
           .eq("installer_id", user.id)
           .order("created_at", { ascending: false })
           .limit(5),
@@ -62,7 +62,7 @@ export function useInstallerStats() {
       ]);
 
       const totalSavings = (assessmentsRes.data ?? []).reduce((sum, a) => {
-        const savings = a.result?.comparison?.savingsPerYear ?? 0;
+        const savings = a.results?.comparison?.savingsPerYear ?? 0;
         return sum + (savings > 0 ? savings : 0);
       }, 0);
 

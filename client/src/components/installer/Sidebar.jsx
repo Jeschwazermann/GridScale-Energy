@@ -9,7 +9,7 @@ import {
   LogOut,
   ChevronRight,
 } from "lucide-react";
-import { useAuth } from "../../contexts/AuthContext";
+import { useAuth } from "../../contexts/useAuth";
 
 const NAV_ITEMS = [
   { label: "Dashboard", icon: LayoutDashboard, path: "/installer/dashboard" },

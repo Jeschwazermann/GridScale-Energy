@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { Plus, Search, MapPin, ArrowRight, AlertCircle } from "lucide-react";
 import InstallerLayout from "../../layouts/installer";
 import { supabase } from "../../lib/supabase";
-import { useAuth } from "../../contexts/AuthContext";
+import { useAuth } from "../../contexts/useAuth";
 
 /* ─── Status config ──────────────────────────────────────────── */
 const STATUSES = [
@@ -76,7 +76,7 @@ export default function CustomerList() {
 
     const { data, error: err } = await supabase
       .from("customers")
-      .select("*, assessments(result, created_at)")
+      .select("*, assessments(results, created_at)")
       .eq("installer_id", user.id)
       .order("created_at", { ascending: false });
 
@@ -226,7 +226,7 @@ export default function CustomerList() {
             <div className="divide-y">
               {filtered.map((customer) => {
                 const latest = customer.assessments?.[0];
-                const savings = latest?.result?.comparison?.savingsPerYear;
+                const savings = latest?.results?.comparison?.savingsPerYear;
 
                 return (
                   <div

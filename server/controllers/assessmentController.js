@@ -81,7 +81,7 @@ export const createAssessment = async (req, res, next) => {
           lifespan: data.lifespan,
           gridHours: data.gridHours,
         },
-        result,
+        results: result,
       })
       .select()
       .single();

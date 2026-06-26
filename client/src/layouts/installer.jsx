@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import Sidebar from "../components/installer/Sidebar";
 import { supabase } from "../lib/supabase";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth } from "../contexts/useAuth";
 
 /* ── Mobile bottom tabs ── */
 const TABS = [

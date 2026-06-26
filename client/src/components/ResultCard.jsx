@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   ArrowRight,
 } from "lucide-react";
+import LeadModal from "./LeadModal";
 
 /* ─── Formatters ─────────────────────────────────────────────── */
 const fmt = (v) =>
@@ -98,6 +99,7 @@ const MetricCard = ({
 export default function ResultCard({ result, lifespan }) {
   const { energy, grid, generator, solar, comparison } = result;
   const [animated, setAnimated] = useState(false);
+  const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
@@ -669,7 +671,10 @@ export default function ResultCard({ result, lifespan }) {
           </div>
         </div>
         {isSolarViable && comparison.cheapestSource === "Solar" && (
-          <button className="shrink-0 bg-white text-teal-700 font-bold text-sm px-5 py-3 rounded-xl hover:bg-teal-50 transition-colors whitespace-nowrap shadow-sm">
+          <button
+            onClick={() => setShowModal(true)}
+            className="shrink-0 bg-white text-teal-700 font-bold text-sm px-5 py-3 rounded-xl hover:bg-teal-50 transition-colors whitespace-nowrap shadow-sm"
+          >
             Get Solar Quote →
           </button>
         )}
@@ -695,6 +700,18 @@ export default function ResultCard({ result, lifespan }) {
           and market conditions.
         </p>
       </div>
+
+      {/* Lead submission modal */}
+      <LeadModal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        calculatorResult={result}
+        savingsSummary={
+          primarySavingsPositive && isSolarViable
+            ? fmtShort(primarySavings)
+            : undefined
+        }
+      />
     </div>
   );
 }

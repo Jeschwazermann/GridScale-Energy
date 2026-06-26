@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import InstallerLayout from "../../layouts/installer";
 import { supabase } from "../../lib/supabase";
-import { useAuth } from "../../contexts/AuthContext";
+import { useAuth } from "../../contexts/useAuth";
 import { runAssessment } from "../../services/installerApi";
 
 /* ─── Appliance Library ──────────────────────────────────────── */
@@ -303,7 +303,7 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
 const emptyAppliance = { name: "", power: "", hours: "", days: "", units: "1" };
 
 export default function NewAssessment() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const navigate = useNavigate();
   const { state: locationState } = useLocation();
 
@@ -337,6 +337,25 @@ export default function NewAssessment() {
   const [error, setError] = useState(null);
 
   const showGridHours = includeGrid || includeGenerator;
+
+  /* ── Seed default tariff & fuel price from installer profile ──
+     Only runs once when the profile first loads (or changes identity).
+     Does not overwrite fields the user has already edited, because we
+     only seed when the field is still at its empty initial value. */
+  useEffect(() => {
+    if (!profile) return;
+    setSettings((prev) => ({
+      ...prev,
+      gridTariff:
+        prev.gridTariff === "" && profile.default_grid_tariff != null
+          ? String(profile.default_grid_tariff)
+          : prev.gridTariff,
+      fuelPrice:
+        prev.fuelPrice === "" && profile.default_fuel_price != null
+          ? String(profile.default_fuel_price)
+          : prev.fuelPrice,
+    }));
+  }, [profile]);
 
   /* ── Load customers ──
      The fetch logic lives directly inside the effect instead of being
