@@ -21,7 +21,7 @@ export default function Hero() {
         backgroundPosition: "center right",
       }}
     >
-      {/* Teal gradient overlay — sits on top of photo at ~80% opacity */}
+      {/* Teal gradient overlay */}
       <div
         className="absolute inset-0"
         style={{
@@ -29,7 +29,6 @@ export default function Hero() {
             "linear-gradient(135deg, rgba(13,20,30,0.88) 0%, rgba(15,118,110,0.80) 60%, rgba(6,95,70,0.75) 100%)",
         }}
       />
-
       {/* Decorative grid overlay */}
       <div
         className="absolute inset-0 opacity-10"
@@ -40,7 +39,7 @@ export default function Hero() {
         }}
       />
 
-      {/* Floating orb */}
+      {/* Floating orbs */}
       <div className="absolute top-24 right-16 w-72 h-72 bg-teal-400 rounded-full opacity-10 blur-3xl pointer-events-none" />
       <div className="absolute bottom-32 left-8 w-48 h-48 bg-emerald-300 rounded-full opacity-10 blur-2xl pointer-events-none" />
 
@@ -64,8 +63,8 @@ export default function Hero() {
             </h1>
 
             <p className="text-teal-100 text-lg leading-relaxed mb-10 max-w-md">
-              Grid. Generator. Solar. Our Cost Calculator calculates exactly
-              what each energy source costs you — and tells you which one makes
+              Grid. Generator. Solar. GridScale Africa calculates exactly what
+              each energy source costs you — and tells you which one makes
               financial sense for your home or business.
             </p>
 
@@ -89,6 +88,22 @@ export default function Hero() {
             <p className="text-teal-300/70 text-xs mt-8 font-medium tracking-wide uppercase">
               Free to use · No signup required · Results in 60 seconds
             </p>
+
+            {/* Installer CTA */}
+            <div className="mt-6 inline-flex items-center gap-3 bg-white/10 backdrop-blur-sm border border-teal-400/30 rounded-xl px-4 py-3">
+              <div className="w-7 h-7 bg-teal-400/20 rounded-lg flex items-center justify-center shrink-0">
+                <Sun size={14} className="text-teal-300" />
+              </div>
+              <p className="text-sm text-teal-100">
+                Solar installer or EPC?{" "}
+                <Link
+                  to="/installer/signup"
+                  className="font-semibold text-teal-300 hover:text-white underline underline-offset-2 transition-colors"
+                >
+                  Join as a verified installer →
+                </Link>
+              </p>
+            </div>
           </div>
 
           {/* Right — Visual */}

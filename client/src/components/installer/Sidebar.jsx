@@ -81,7 +81,7 @@ export default function Sidebar({ leadsCount = 0, onClose }) {
               <span className="flex-1">{label}</span>
               {/* Lead count badge */}
               {isLeads && leadsCount > 0 && (
-                <span className="bg-amber-400 text-amber-900 text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+                <span className="bg-amber-400 text-amber-900 text-xs font-bold px-1.5 py-0.5 rounded-full min-w-5 text-center">
                   {leadsCount > 99 ? "99+" : leadsCount}
                 </span>
               )}

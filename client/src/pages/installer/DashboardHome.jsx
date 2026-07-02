@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Users,
@@ -121,12 +122,17 @@ export default function DashboardHome() {
   const { stats, recentCustomers, newLeads, loading, error, refetch } =
     useInstallerStats();
 
+  const [claimingId, setClaimingId] = useState(null);
+
   const handleClaimLead = async (leadId) => {
+    if (claimingId) return;
+    setClaimingId(leadId);
     try {
       await claimLead(leadId);
-      refetch();
     } catch {
-      /* silently refetch even on error to sync state */
+      /* 409 = already claimed by someone else — fall through to refetch */
+    } finally {
+      setClaimingId(null);
       refetch();
     }
   };
@@ -396,9 +402,10 @@ export default function DashboardHome() {
                       </div>
                       <button
                         onClick={() => handleClaimLead(lead.id)}
-                        className="text-xs font-semibold text-teal-600 hover:text-teal-700 bg-teal-50 hover:bg-teal-100 px-3 py-1.5 rounded-lg transition-colors"
+                        disabled={claimingId === lead.id}
+                        className="text-xs font-semibold text-teal-600 hover:text-teal-700 bg-teal-50 hover:bg-teal-100 disabled:opacity-50 px-3 py-1.5 rounded-lg transition-colors"
                       >
-                        Claim Lead →
+                        {claimingId === lead.id ? "Claiming…" : "Claim Lead →"}
                       </button>
                     </div>
                   );

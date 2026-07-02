@@ -149,38 +149,24 @@ export default function LeadsPage() {
   const handleConvert = async (lead) => {
     setActionId(lead.id);
     try {
-      /* Create a customer record from the lead */
-      const { data: customer, error: custErr } = await supabase
-        .from("customers")
-        .insert({
-          installer_id: user.id,
-          name: lead.name,
-          phone: lead.phone,
-          email: lead.email ?? null,
-          state: lead.state ?? null,
-          lga: lead.lga ?? null,
-          status: "new",
-          notes: "Created from calculator lead",
-        })
-        .select()
-        .single();
+      /* Backend creates customer + marks lead converted in one operation.
+         Returns customerId for navigation. */
+      const { data } = await convertLead(lead.id);
 
-      if (custErr) throw custErr;
-
-      /* Mark lead as converted */
-      await convertLead(lead.id);
+      console.log("[handleConvert] Response:", data);
 
       setLeads((prev) =>
         prev.map((l) => (l.id === lead.id ? { ...l, status: "converted" } : l)),
       );
 
-      /* Navigate to the new customer to run a full assessment */
-      navigate(`/installer/customers/${customer.id}`);
+      /* Navigate to the new customer created by the backend */
+      navigate(`/installer/customers/${data.customerId}`);
     } catch (err) {
-      setError(err.message || "Failed to convert lead.");
-      // The customer row may have been created even if convertLead failed
-      // afterward — re-sync from the server so the list reflects reality
-      // instead of leaving stale local state.
+      console.error(
+        "[handleConvert] Error:",
+        err.response?.data || err.message,
+      );
+      setError(err.response?.data?.error || "Failed to convert lead.");
       setRefreshTick((t) => t + 1);
     } finally {
       setActionId(null);

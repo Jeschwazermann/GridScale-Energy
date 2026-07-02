@@ -57,21 +57,45 @@ export const claimLead = async (req, res, next) => {
   try {
     const db = supabaseForUser(req.token);
 
-    /* Only claim if unclaimed */
-    const { data, error } = await db
+    /* First, read the lead to check its current state */
+    const { data: lead, error: leadError } = await db
+      .from("leads")
+      .select("*")
+      .eq("id", req.params.id)
+      .single();
+
+    console.log("Lead read result:", { lead, leadError, userId: req.user.id });
+
+    if (leadError) throw leadError;
+    if (!lead) return next(new AppError("Lead not found.", 404));
+
+    /* Already claimed by this installer — idempotent success */
+    if (lead.claimed_by === req.user.id) {
+      return res.json(lead);
+    }
+
+    /* Already claimed by someone else */
+    if (lead.claimed_by !== null) {
+      return next(new AppError("Lead not found or already claimed.", 409));
+    }
+
+    /* Use admin client for the update — RLS on the leads table would
+       otherwise silently block the write and return data: null, which
+       looks identical to a 409 conflict from the controller's perspective */
+    const { data, error } = await supabaseAdmin
       .from("leads")
       .update({
         claimed_by: req.user.id,
         status: "claimed",
       })
       .eq("id", req.params.id)
-      .is("claimed_by", null) // prevent double-claiming
+      .is("claimed_by", null) // prevent double-claiming in a race
       .select()
-      .single();
+      .maybeSingle();
 
+    console.log("Claim update result:", { data, error });
     if (error || !data) {
-      const err = new AppError("Lead not found or already claimed.", 409);
-      return next(err);
+      return next(new AppError("Lead not found or already claimed.", 409));
     }
 
     res.json(data);
@@ -80,25 +104,64 @@ export const claimLead = async (req, res, next) => {
   }
 };
 
-/* PUT /api/installer/leads/:id/convert — mark lead as converted */
+/* PUT /api/installer/leads/:id/convert — create customer + mark lead converted */
 export const convertLead = async (req, res, next) => {
   try {
-    const db = supabaseForUser(req.token);
-    const { data, error } = await db
+    console.log(
+      "[convertLead] Starting — lead:",
+      req.params.id,
+      "installer:",
+      req.user.id,
+    );
+
+    /* Fetch lead — only matches if this installer owns it */
+    const { data: lead, error: leadErr } = await supabaseAdmin
       .from("leads")
-      .update({ status: "converted" })
+      .select("*")
       .eq("id", req.params.id)
       .eq("claimed_by", req.user.id)
+      .maybeSingle();
+
+    console.log("[convertLead] Lead fetch:", { lead, leadErr });
+
+    if (leadErr) throw leadErr;
+    if (!lead) return next(new AppError("Lead not found.", 404));
+
+    /* Create customer from lead */
+    const { data: customer, error: custErr } = await supabaseAdmin
+      .from("customers")
+      .insert({
+        installer_id: req.user.id,
+        name: lead.name,
+        phone: lead.phone,
+        email: lead.email ?? null,
+        state: lead.state ?? null,
+        lga: lead.lga ?? null,
+        status: "new",
+        notes: "Created from calculator lead",
+      })
       .select()
       .single();
 
-    if (error || !data) {
-      const err = new AppError("Lead not found.", 404);
-      return next(err);
-    }
+    console.log("[convertLead] Customer insert:", { customer, custErr });
 
-    res.json(data);
+    if (custErr) throw custErr;
+
+    /* Mark lead as converted */
+    const { error: updateErr } = await supabaseAdmin
+      .from("leads")
+      .update({ status: "converted" })
+      .eq("id", req.params.id);
+
+    console.log("[convertLead] Lead status update:", { updateErr });
+    if (updateErr) throw updateErr;
+
+    console.log("[convertLead] Done — new customer id:", customer.id);
+
+    /* Return both customerId (for navigation) and full customer object */
+    res.json({ customerId: customer.id, customer });
   } catch (err) {
+    console.error("[convertLead] Unhandled error:", err.message);
     next(err);
   }
 };

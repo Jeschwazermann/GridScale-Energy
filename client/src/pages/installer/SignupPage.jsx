@@ -46,16 +46,20 @@ export default function SignupPage() {
 
     setLoading(true);
     try {
-      await signUp({
+      const { data } = await signUp({
         email: form.email,
         password: form.password,
         companyName: form.companyName,
         contactName: form.contactName,
       });
       setSuccess(true);
-      /* Supabase sends a confirmation email by default.
-         Navigate to dashboard after a short pause. */
-      setTimeout(() => navigate("/installer/dashboard"), 1500);
+      /* Only auto-navigate if a session is immediately active,
+         meaning email confirmation is disabled in Supabase.
+         If confirmation is on, data.session is null and we show
+         the "check your email" screen instead. */
+      if (data?.session) {
+        setTimeout(() => navigate("/installer/dashboard"), 1500);
+      }
     } catch (err) {
       setError(err.message || "Signup failed. Please try again.");
     } finally {
@@ -169,11 +173,19 @@ export default function SignupPage() {
                 <CheckCircle size={32} className="text-teal-600" />
               </div>
               <h2 className="font-display font-bold text-2xl text-gray-900 mb-2">
-                Account created!
+                Check your email
               </h2>
-              <p className="text-gray-500 text-sm">
-                Taking you to your dashboard…
+              <p className="text-gray-500 text-sm leading-relaxed max-w-xs mx-auto">
+                We sent a confirmation link to{" "}
+                <strong className="text-gray-700">{form.email}</strong>. Click
+                it to activate your account then come back to sign in.
               </p>
+              <Link
+                to="/installer/login"
+                className="inline-block mt-6 text-sm font-semibold text-teal-600 hover:text-teal-700"
+              >
+                Go to Login →
+              </Link>
             </div>
           ) : (
             <>

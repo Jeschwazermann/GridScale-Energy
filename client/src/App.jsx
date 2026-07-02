@@ -1,6 +1,7 @@
 import { Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext.jsx";
 import ProtectedRoute from "./components/ProtectedRoute";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 import LandingPage from "./pages/LandingPage";
 import CalculatorPage from "./pages/CalculatorPage";
@@ -26,12 +27,14 @@ export default function App() {
         {/* ── Installer auth ── */}
         <Route path="/installer/login" element={<LoginPage />} />
         <Route path="/installer/signup" element={<SignupPage />} />
-        {/* ── Installer app (protected) ── */}
+        {/* ── Installer app (protected + error boundary) ── */}
         <Route
           path="/installer/dashboard"
           element={
             <ProtectedRoute>
-              <DashboardHome />
+              <ErrorBoundary>
+                <DashboardHome />
+              </ErrorBoundary>
             </ProtectedRoute>
           }
         />
@@ -39,7 +42,9 @@ export default function App() {
           path="/installer/customers"
           element={
             <ProtectedRoute>
-              <CustomerList />
+              <ErrorBoundary>
+                <CustomerList />
+              </ErrorBoundary>
             </ProtectedRoute>
           }
         />
@@ -47,7 +52,9 @@ export default function App() {
           path="/installer/customers/:id"
           element={
             <ProtectedRoute>
-              <CustomerDetail />
+              <ErrorBoundary>
+                <CustomerDetail />
+              </ErrorBoundary>
             </ProtectedRoute>
           }
         />
@@ -55,7 +62,9 @@ export default function App() {
           path="/installer/new-assessment"
           element={
             <ProtectedRoute>
-              <NewAssessment />
+              <ErrorBoundary>
+                <NewAssessment />
+              </ErrorBoundary>
             </ProtectedRoute>
           }
         />
@@ -63,7 +72,9 @@ export default function App() {
           path="/installer/leads"
           element={
             <ProtectedRoute>
-              <LeadsPage />
+              <ErrorBoundary>
+                <LeadsPage />
+              </ErrorBoundary>
             </ProtectedRoute>
           }
         />
@@ -71,7 +82,9 @@ export default function App() {
           path="/installer/settings"
           element={
             <ProtectedRoute>
-              <SettingsPage />
+              <ErrorBoundary>
+                <SettingsPage />
+              </ErrorBoundary>
             </ProtectedRoute>
           }
         />

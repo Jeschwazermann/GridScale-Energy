@@ -448,7 +448,7 @@ export default function ResultCard({ result, lifespan }) {
                   </div>
                   <div className="h-3 rounded-full bg-gray-100 overflow-hidden">
                     <div
-                      className={`h-full rounded-full bg-gradient-to-r ${barColor} transition-all duration-700 ease-out ${isReality ? "opacity-40" : ""}`}
+                      className={`h-full rounded-full bg-linear-to-r ${barColor} transition-all duration-700 ease-out ${isReality ? "opacity-40" : ""}`}
                       style={{ width: animated ? `${pct}%` : "0%" }}
                     />
                   </div>
@@ -478,11 +478,11 @@ export default function ResultCard({ result, lifespan }) {
           </div>
           <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden">
             <div
-              className="absolute inset-y-0 left-0 rounded-l-full bg-gradient-to-r from-gray-300 to-gray-400 transition-all duration-700 ease-out"
+              className="absolute inset-y-0 left-0 rounded-l-full bg-linear-to-r from-gray-300 to-gray-400 transition-all duration-700 ease-out"
               style={{ width: animated ? `${paybackPct}%` : "0%" }}
             />
             <div
-              className="absolute inset-y-0 rounded-r-full bg-gradient-to-r from-teal-400 to-teal-600 transition-all duration-700 ease-out"
+              className="absolute inset-y-0 rounded-r-full bg-linear-to-r from-teal-400 to-teal-600 transition-all duration-700 ease-out"
               style={{ left: animated ? `${paybackPct}%` : "100%", right: 0 }}
             />
             <div
@@ -622,55 +622,43 @@ export default function ResultCard({ result, lifespan }) {
       ─────────────────────────────────────────────────────────── */}
       <div
         className={`rounded-2xl px-6 py-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${
-          isSolarViable && comparison.cheapestSource === "Solar"
-            ? "bg-teal-600"
-            : "bg-gray-100"
+          isSolarViable ? "bg-teal-600" : "bg-gray-100"
         }`}
       >
         <div className="flex items-center gap-4">
           <div
             className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
-              isSolarViable && comparison.cheapestSource === "Solar"
-                ? "bg-teal-500"
-                : "bg-gray-200"
+              isSolarViable ? "bg-teal-500" : "bg-gray-200"
             }`}
           >
             <Award
               size={22}
-              className={
-                isSolarViable && comparison.cheapestSource === "Solar"
-                  ? "text-white"
-                  : "text-gray-500"
-              }
+              className={isSolarViable ? "text-white" : "text-gray-500"}
               strokeWidth={1.8}
             />
           </div>
           <div>
             <p
               className={`font-display font-bold text-lg leading-tight ${
-                isSolarViable && comparison.cheapestSource === "Solar"
-                  ? "text-white"
-                  : "text-gray-700"
+                isSolarViable ? "text-white" : "text-gray-700"
               }`}
             >
-              {isSolarViable && comparison.cheapestSource === "Solar"
+              {isSolarViable
                 ? `Go Solar — save ${fmtShort(primarySavings)}/yr`
                 : `${comparison.cheapestSource} is your best option right now`}
             </p>
             <p
               className={`text-sm mt-0.5 ${
-                isSolarViable && comparison.cheapestSource === "Solar"
-                  ? "text-teal-200"
-                  : "text-gray-500"
+                isSolarViable ? "text-teal-200" : "text-gray-500"
               }`}
             >
-              {isSolarViable && comparison.cheapestSource === "Solar"
+              {isSolarViable
                 ? "Best option based on your usage and inputs"
                 : "Adjust your inputs or add more appliances to explore solar viability"}
             </p>
           </div>
         </div>
-        {isSolarViable && comparison.cheapestSource === "Solar" && (
+        {isSolarViable && (
           <button
             onClick={() => setShowModal(true)}
             className="shrink-0 bg-white text-teal-700 font-bold text-sm px-5 py-3 rounded-xl hover:bg-teal-50 transition-colors whitespace-nowrap shadow-sm"

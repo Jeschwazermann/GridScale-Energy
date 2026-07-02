@@ -127,10 +127,6 @@ export default function CustomerDetail() {
      different assessment while the request was in flight. */
   const sizingRequestIdRef = useRef(null);
 
-  /* Guards against double-fetching the same customer — e.g. React 18
-     Strict Mode mounting effects twice in dev. */
-  const loadedForRef = useRef(null);
-
   /* ── Fetch customer + assessments ──
      This is the ONLY effect tied to an external input (route `id` +
      authenticated `user`). Nothing else is allowed to be an effect
@@ -140,39 +136,67 @@ export default function CustomerDetail() {
   useEffect(() => {
     if (!user || !id) return;
 
-    const key = `${user.id}:${id}`;
-    if (loadedForRef.current === key) return;
-    loadedForRef.current = key;
-
     let cancelled = false;
 
     (async () => {
       setLoading(true);
       setError(null);
 
-      const { data, error: err } = await supabase
-        .from("customers")
-        .select("*, assessments(*), quotations(*)")
-        .eq("id", id)
-        .eq("installer_id", user.id)
-        .single();
+      /* Fetch customer, assessments, and quotations in parallel.
+         Separate queries avoid PostgREST embed FK requirement. */
+      const [customerRes, assessmentsRes, quotationsRes] = await Promise.all([
+        supabase
+          .from("customers")
+          .select("*")
+          .eq("id", id)
+          .eq("installer_id", user.id)
+          .limit(1),
+
+        supabase
+          .from("assessments")
+          .select("*")
+          .eq("customer_id", id)
+          .order("created_at", { ascending: false }),
+
+        supabase
+          .from("quotations")
+          .select("*")
+          .eq("customer_id", id)
+          .order("created_at", { ascending: false })
+          .limit(1),
+      ]);
 
       if (cancelled) return;
 
-      if (err || !data) {
+      if (customerRes.error) {
+        console.error(
+          "[CustomerDetail] Customer fetch error:",
+          customerRes.error.message,
+        );
+        setError(customerRes.error.message || "Customer not found.");
+        setLoading(false);
+        return;
+      }
+
+      const customerData = customerRes.data?.[0] ?? null;
+      if (!customerData) {
+        console.error("[CustomerDetail] No customer found for id:", id);
         setError("Customer not found.");
         setLoading(false);
         return;
       }
 
-      setCustomer(data);
-
-      const sorted = (data.assessments ?? []).sort(
-        (a, b) => new Date(b.created_at) - new Date(a.created_at),
+      console.log(
+        "[CustomerDetail] Loaded:",
+        customerData.name,
+        "| assessments:",
+        assessmentsRes.data?.length ?? 0,
       );
-      setAssessments(sorted);
 
-      const existingQuote = data.quotations?.[0];
+      setCustomer(customerData);
+      setAssessments(assessmentsRes.data ?? []);
+
+      const existingQuote = quotationsRes.data?.[0] ?? null;
       hasExistingQuoteRef.current = Boolean(existingQuote);
 
       if (existingQuote) {
