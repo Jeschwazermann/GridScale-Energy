@@ -7,7 +7,11 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  /* ── Fetch installer profile from DB ── */
+  /* ── Fetch installer profile from DB ──
+     If no row exists yet (email confirmation was ON during signup so
+     the insert was skipped), create it now from auth metadata that
+     was stored at signup time. At this point the session is active
+     so auth.uid() matches and RLS allows the write.              */
   const fetchProfile = async (userId) => {
     const { data, error } = await supabase
       .from("installers")
@@ -15,7 +19,36 @@ export function AuthProvider({ children }) {
       .eq("id", userId)
       .maybeSingle();
 
-    if (!error && data) setProfile(data);
+    if (error) return;
+
+    if (data) {
+      setProfile(data);
+      return;
+    }
+
+    /* No profile row yet — create from auth metadata */
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const meta = user?.user_metadata ?? {};
+
+    if (meta.company_name || meta.contact_name) {
+      const { data: newProfile, error: insertError } = await supabase
+        .from("installers")
+        .upsert(
+          {
+            id: userId,
+            email: user.email,
+            company_name: meta.company_name ?? null,
+            contact_name: meta.contact_name ?? null,
+          },
+          { onConflict: "id" },
+        )
+        .select()
+        .single();
+
+      if (!insertError && newProfile) setProfile(newProfile);
+    }
   };
 
   /* ── Refresh profile manually (e.g. after settings save) ── */
@@ -50,21 +83,36 @@ export function AuthProvider({ children }) {
 
   /* ── Sign up ── */
   const signUp = async ({ email, password, companyName, contactName }) => {
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    /* Store company/contact in auth metadata so fetchProfile can
+       create the installers row on first login if email confirmation
+       is ON (session is null at signup time, RLS would block insert) */
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          company_name: companyName,
+          contact_name: contactName,
+        },
+      },
+    });
     if (error) throw error;
 
-    /* Create installer profile row */
-    if (data.user) {
-      const { error: profileError } = await supabase.from("installers").insert({
-        id: data.user.id,
-        email,
-        company_name: companyName,
-        contact_name: contactName,
-      });
+    /* Only insert profile immediately if session is active —
+       meaning email confirmation is OFF. If confirmation is ON,
+       data.session is null and fetchProfile handles it on first login. */
+    if (data.user && data.session) {
+      const { error: profileError } = await supabase.from("installers").upsert(
+        {
+          id: data.user.id,
+          email,
+          company_name: companyName,
+          contact_name: contactName,
+        },
+        { onConflict: "id" },
+      );
       if (profileError) throw profileError;
 
-      /* Fetch profile immediately after insert — don't rely on
-         onAuthStateChange which may fire before the row exists */
       await fetchProfile(data.user.id);
     }
 

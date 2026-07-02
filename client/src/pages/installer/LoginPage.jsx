@@ -9,6 +9,7 @@ export default function LoginPage() {
   const location = useLocation();
 
   const from = location.state?.from?.pathname || "/installer/dashboard";
+  const authError = location.state?.authError ?? null;
 
   const [form, setForm] = useState({ email: "", password: "" });
   const [showPw, setShowPw] = useState(false);
@@ -130,6 +131,13 @@ export default function LoginPage() {
               Sign in to your installer account
             </p>
           </div>
+
+          {/* Auth redirect error — e.g. expired confirmation link */}
+          {authError && (
+            <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 mb-4">
+              <p className="text-sm text-amber-700">{authError}</p>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Email */}

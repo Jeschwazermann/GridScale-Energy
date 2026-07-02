@@ -1,4 +1,5 @@
-import { Routes, Route } from "react-router-dom";
+import { useEffect } from "react";
+import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext.jsx";
 import ProtectedRoute from "./components/ProtectedRoute";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -16,9 +17,48 @@ import NewAssessment from "./pages/installer/NewAssessment";
 import LeadsPage from "./pages/installer/LeadsPage";
 import SettingsPage from "./pages/installer/SettingsPage";
 
+/* Handles Supabase auth redirect errors (e.g. expired confirmation link)
+   that come back as URL hash params like #error=access_denied&error_code=otp_expired */
+function AuthRedirectHandler() {
+  const navigate = useNavigate();
+  const location = useLocation(); // eslint-disable-line no-unused-vars
+
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (!hash) return;
+
+    const params = new URLSearchParams(hash.replace("#", ""));
+    const error = params.get("error");
+    const errorCode = params.get("error_code");
+    const errorDesc = params.get("error_description");
+
+    if (error) {
+      window.history.replaceState(null, "", window.location.pathname);
+
+      if (errorCode === "otp_expired") {
+        navigate("/installer/login", {
+          state: {
+            authError:
+              "Your confirmation link has expired. Please sign in or request a new link.",
+          },
+        });
+      } else {
+        navigate("/installer/login", {
+          state: {
+            authError: errorDesc || "Authentication failed. Please try again.",
+          },
+        });
+      }
+    }
+  }, [navigate]);
+
+  return null;
+}
+
 export default function App() {
   return (
     <AuthProvider>
+      <AuthRedirectHandler />
       <Routes>
         {/* ── Consumer ── */}
         <Route path="/" element={<LandingPage />} />
