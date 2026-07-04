@@ -16,17 +16,16 @@ app.use(
     credentials: true,
   }),
 );
-app.use(express.json({ limit: "5mb" })); // 5mb for base64 logo uploads
-
+app.use(express.json({ limit: "5mb" }));
 app.use(
   morgan("short", {
     stream: { write: (message) => logger.info(message.trim()) },
   }),
 );
 
-app.use("/api", calculatorRoutes); // POST /api/calculate
-app.use("/api/installer", installerRoutes); // all /api/installer/* routes
-app.use("/api/leads", leadRoutes); // POST /api/leads (public)
+app.use("/api", calculatorRoutes);
+app.use("/api/installer", installerRoutes);
+app.use("/api/leads", leadRoutes);
 
 app.use(errorHandler);
 
