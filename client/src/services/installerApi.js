@@ -2,7 +2,7 @@ import axios from "axios";
 import { supabase } from "../lib/supabase";
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:3000",
+  baseURL: import.meta.env.VITE_API_URL,
 });
 
 /* ── Interceptor: attach Supabase JWT to every request ──
