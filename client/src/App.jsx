@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext.jsx";
-import ProtectedRoute from "./components/ProtectedRoute";
+import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import ErrorBoundary from "./components/ErrorBoundary";
 
 import LandingPage from "./pages/LandingPage";
