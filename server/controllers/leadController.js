@@ -5,7 +5,15 @@ import { AppError } from "../utils/AppError.js";
    Consumer submits "Get Solar Quote" from the results page. */
 export const submitLead = async (req, res, next) => {
   try {
-    const { name, phone, email, state, lga, calculatorResult } = req.body;
+    const {
+      name,
+      phone,
+      email,
+      state,
+      lga,
+      calculatorResult,
+      calculatorInputs,
+    } = req.body;
 
     if (!name || !phone) {
       const err = new AppError("Name and phone number are required.", 400);
@@ -21,6 +29,7 @@ export const submitLead = async (req, res, next) => {
         state: state || null,
         lga: lga || null,
         calculator_result: calculatorResult || null,
+        calculator_inputs: calculatorInputs || null, // ← store inputs too
         status: "new",
       })
       .select()
@@ -62,7 +71,7 @@ export const claimLead = async (req, res, next) => {
       .from("leads")
       .select("*")
       .eq("id", req.params.id)
-      .single();
+      .maybeSingle();
 
     console.log("Lead read result:", { lead, leadError, userId: req.user.id });
 
@@ -146,6 +155,33 @@ export const convertLead = async (req, res, next) => {
     console.log("[convertLead] Customer insert:", { customer, custErr });
 
     if (custErr) throw custErr;
+
+    /* ── Save consumer's calculator result as an assessment ──────────
+       This lets the installer immediately see what the consumer saw
+       without needing to re-run the full assessment from scratch.    */
+    if (lead.calculator_result) {
+      const { error: assessErr } = await supabaseAdmin
+        .from("assessments")
+        .insert({
+          customer_id: customer.id,
+          installer_id: req.user.id,
+          /* Use stored inputs if available, otherwise empty defaults */
+          appliances: lead.calculator_inputs?.appliances ?? [],
+          settings: {
+            ...(lead.calculator_inputs?.settings ?? {}),
+            source: "consumer_calculator", // marks origin for the UI
+          },
+          results: lead.calculator_result,
+        });
+
+      if (assessErr) {
+        /* Non-fatal — customer still created successfully */
+        console.warn(
+          "[convertLead] Assessment save failed:",
+          assessErr.message,
+        );
+      }
+    }
 
     /* Mark lead as converted */
     const { error: updateErr } = await supabaseAdmin

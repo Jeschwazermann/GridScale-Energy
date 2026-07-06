@@ -78,7 +78,7 @@ const TABS = [
 
 /* ─── Empty line item ────────────────────────────────────────── */
 const emptyItem = () => ({
-  id: crypto.randomUUID?.() ?? Date.now(),
+  id: Date.now(),
   description: "",
   quantity: 1,
   unitPrice: 0,
@@ -112,93 +112,51 @@ export default function CustomerDetail() {
   /* Status update */
   const [statusUpdating, setStatusUpdating] = useState(false);
 
-  /* Tracks whether a quotation already existed when the page loaded,
-     so the sizing pre-population logic doesn't depend on a stale
-     closure over `quotation` state. */
-  const hasExistingQuoteRef = useRef(false);
-
-  /* Caches sizing results per assessment id so re-opening the sizing
-     tab, or re-selecting an assessment you've already viewed, doesn't
-     refire a network call. A plain ref is the "useEffect-free" form
-     of memoization here — no extra render, no extra effect. */
-  const sizingCacheRef = useRef(new Map());
-
-  /* Ignores a sizing response if the user has since navigated to a
-     different assessment while the request was in flight. */
-  const sizingRequestIdRef = useRef(null);
-
   /* ── Fetch customer + assessments ──
-     This is the ONLY effect tied to an external input (route `id` +
-     authenticated `user`). Nothing else is allowed to be an effect
-     chained off the state this one sets — sizing is fetched
-     imperatively (see fetchSizingFor below), not reactively, which is
-     what actually stops the cascading-render warning. */
+     Inlined as an IIFE with a `cancelled` flag so a fast customer switch
+     (id changes before the previous fetch resolves) can't let a stale
+     response land after a newer one and overwrite it. All per-customer
+     state is reset up front so nothing from the previously viewed
+     customer (selected assessment, sizing, quotation draft) leaks
+     across if the route param changes without a full remount. */
   useEffect(() => {
     if (!user || !id) return;
-
     let cancelled = false;
 
     (async () => {
       setLoading(true);
       setError(null);
 
-      /* Fetch customer, assessments, and quotations in parallel.
-         Separate queries avoid PostgREST embed FK requirement. */
-      const [customerRes, assessmentsRes, quotationsRes] = await Promise.all([
-        supabase
-          .from("customers")
-          .select("*")
-          .eq("id", id)
-          .eq("installer_id", user.id)
-          .limit(1),
-
-        supabase
-          .from("assessments")
-          .select("*")
-          .eq("customer_id", id)
-          .order("created_at", { ascending: false }),
-
-        supabase
-          .from("quotations")
-          .select("*")
-          .eq("customer_id", id)
-          .order("created_at", { ascending: false })
-          .limit(1),
-      ]);
+      const { data, error: err } = await supabase
+        .from("customers")
+        .select("*, assessments(*), quotations(*)")
+        .eq("id", id)
+        .eq("installer_id", user.id)
+        .single();
 
       if (cancelled) return;
 
-      if (customerRes.error) {
-        console.error(
-          "[CustomerDetail] Customer fetch error:",
-          customerRes.error.message,
-        );
-        setError(customerRes.error.message || "Customer not found.");
-        setLoading(false);
-        return;
-      }
-
-      const customerData = customerRes.data?.[0] ?? null;
-      if (!customerData) {
-        console.error("[CustomerDetail] No customer found for id:", id);
+      if (err || !data) {
         setError("Customer not found.");
         setLoading(false);
         return;
       }
 
-      console.log(
-        "[CustomerDetail] Loaded:",
-        customerData.name,
-        "| assessments:",
-        assessmentsRes.data?.length ?? 0,
+      setCustomer(data);
+
+      const sorted = (data.assessments ?? []).sort(
+        (a, b) => new Date(b.created_at) - new Date(a.created_at),
       );
+      setAssessments(sorted);
+      setSelectedIdx(0);
+      setSizing(null);
+      setSizingError(null);
+      sizedAssessmentIdxRef.current = null; // new customer: sizing cache is stale
 
-      setCustomer(customerData);
-      setAssessments(assessmentsRes.data ?? []);
-
-      const existingQuote = quotationsRes.data?.[0] ?? null;
-      hasExistingQuoteRef.current = Boolean(existingQuote);
-
+      /* Pre-fill quotation if one exists, otherwise reset to defaults —
+         without this, switching customers could leave a previous
+         customer's quotation draft on screen. */
+      const existingQuote = data.quotations?.[0];
       if (existingQuote) {
         setQuotation(existingQuote);
         setLineItems(
@@ -225,113 +183,106 @@ export default function CustomerDetail() {
 
   /* ── Selected assessment ── */
   const selectedAssessment = assessments[selectedIdx] ?? null;
-  const assessmentResult = selectedAssessment?.results ?? null;
+  const assessmentResult =
+    selectedAssessment?.result ?? selectedAssessment?.results ?? null;
   const lifespan = selectedAssessment?.settings?.lifespan ?? 25;
   const effectiveDailyKWh = assessmentResult?.energy?.effectiveDailyKWh ?? null;
 
-  /* ── Sizing fetch ──
-     Imperative, not effect-driven: called directly from the tab-click
-     handler and the assessment-selector handler below. This is the
-     change that actually removes the cascading-render warning — there
-     is no effect watching `activeTab` / `effectiveDailyKWh` / `sizing`
-     together and re-deriving whether to fetch. The call site simply
-     decides "I need sizing for assessment X" and asks for it. */
-  const fetchSizingFor = async (assessment) => {
-    if (!assessment) return;
+  /* ── Load sizing when the tab opens ──
+     Previously this was gated on `sizing` itself (`!sizing` in the
+     condition, `sizing` in the deps) — a cascading chain where the
+     effect's own output was also its trigger. That's fragile and hides
+     a real missing dependency (`quotation`, read inside but not
+     declared).
 
-    const kwh = assessment.results?.energy?.effectiveDailyKWh ?? null;
-    if (!kwh) return;
+     Fixed by gating on `selectedIdx` through a ref: an externally
+     driven value, not something this effect writes. The effect can now
+     declare a fully accurate dependency array — including `quotation` —
+     without reintroducing the cascade, because the ref check (not a
+     state check) decides whether a fetch actually happens. A `fetchId`
+     ref also guards against a stale response landing after the user
+     has switched assessments again mid-fetch. */
+  const sizingFetchIdRef = useRef(0);
+  const sizedAssessmentIdxRef = useRef(null);
 
-    /* Served from cache — no network call, no loading flicker. */
-    const cached = sizingCacheRef.current.get(assessment.id);
-    if (cached) {
-      setSizing(cached);
+  useEffect(() => {
+    if (activeTab !== "sizing" || !effectiveDailyKWh) return;
+    if (sizedAssessmentIdxRef.current === selectedIdx) return;
+
+    // eslint-disable-next-line react-hooks/immutability
+    sizedAssessmentIdxRef.current = selectedIdx;
+    let cancelled = false;
+    const fetchId = ++sizingFetchIdRef.current;
+
+    (async () => {
+      setSizingLoading(true);
       setSizingError(null);
-      return;
-    }
+      try {
+        const { data } = await fetchSizing(effectiveDailyKWh);
+        if (cancelled || fetchId !== sizingFetchIdRef.current) return;
 
-    sizingRequestIdRef.current = assessment.id;
-    setSizing(null);
-    setSizingLoading(true);
-    setSizingError(null);
+        setSizing(data);
 
-    try {
-      const { data } = await fetchSizing(kwh);
-
-      /* Drop this response if the user has since moved to a
-         different assessment while the request was in flight. */
-      if (sizingRequestIdRef.current !== assessment.id) return;
-
-      sizingCacheRef.current.set(assessment.id, data);
-      setSizing(data);
-
-      /* Only auto-populate line items when there was no saved
-         quotation to begin with. */
-      if (!hasExistingQuoteRef.current && data) {
-        setLineItems([
-          {
-            id: 1,
-            description: data.inverter.label,
-            quantity: 1,
-            unitPrice: 0,
-          },
-          { id: 2, description: data.panels.label, quantity: 1, unitPrice: 0 },
-          { id: 3, description: data.battery.label, quantity: 1, unitPrice: 0 },
-          {
-            id: 4,
-            description: "Installation & Labour",
-            quantity: 1,
-            unitPrice: 0,
-          },
-        ]);
+        /* Pre-populate quotation line items from sizing, but only if
+           they're still at their untouched default. Read via the
+           updater form so this doesn't need `lineItems` in the
+           dependency array on top of `quotation`. */
+        setLineItems((prev) => {
+          const isUntouchedDefault = prev.length === 1 && !prev[0].description;
+          if (quotation || !data || !isUntouchedDefault) return prev;
+          return [
+            {
+              id: 1,
+              description: data.inverter.label,
+              quantity: 1,
+              unitPrice: 0,
+            },
+            {
+              id: 2,
+              description: data.panels.label,
+              quantity: 1,
+              unitPrice: 0,
+            },
+            {
+              id: 3,
+              description: data.battery.label,
+              quantity: 1,
+              unitPrice: 0,
+            },
+            {
+              id: 4,
+              description: "Installation & Labour",
+              quantity: 1,
+              unitPrice: 0,
+            },
+          ];
+        });
+      } catch (err) {
+        if (cancelled || fetchId !== sizingFetchIdRef.current) return;
+        setSizingError(
+          err?.response?.data?.error || "Sizing calculation failed.",
+        );
+      } finally {
+        if (!cancelled && fetchId === sizingFetchIdRef.current) {
+          setSizingLoading(false);
+        }
       }
-    } catch (err) {
-      if (sizingRequestIdRef.current !== assessment.id) return;
-      setSizingError(err.response?.data?.error || "Sizing calculation failed.");
-    } finally {
-      if (sizingRequestIdRef.current === assessment.id) {
-        setSizingLoading(false);
-      }
-    }
-  };
+    })();
 
-  /* ── Tab click: fetch sizing only when the user actually opens the
-     sizing tab, instead of reactively watching activeTab in an effect. ── */
-  const handleTabClick = (tabId) => {
-    setActiveTab(tabId);
-    if (tabId === "sizing" && selectedAssessment) {
-      void fetchSizingFor(selectedAssessment);
-    }
-  };
-
-  /* ── Switching assessment: refresh sizing only if that tab is
-     already open; otherwise it'll be fetched on next tab click. ── */
-  const handleSelectAssessment = (idx) => {
-    setSelectedIdx(idx);
-    const next = assessments[idx];
-    if (activeTab === "sizing" && next) {
-      void fetchSizingFor(next);
-    }
-  };
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, selectedIdx, effectiveDailyKWh, quotation]);
 
   /* ── Update status ── */
   const updateStatus = async (newStatus) => {
     setStatusUpdating(true);
-    const previousStatus = customer.status;
-
-    /* Optimistic update with rollback on failure */
-    setCustomer((prev) => ({ ...prev, status: newStatus }));
-
-    const { error: err } = await supabase
+    await supabase
       .from("customers")
       .update({ status: newStatus, updated_at: new Date().toISOString() })
       .eq("id", id)
       .eq("installer_id", user.id);
-
-    if (err) {
-      setCustomer((prev) => ({ ...prev, status: previousStatus }));
-    }
-
+    setCustomer((prev) => ({ ...prev, status: newStatus }));
     setStatusUpdating(false);
   };
 
@@ -362,15 +313,19 @@ export default function CustomerDetail() {
         validityDate: validityDate || null,
       };
 
-      const { data: saved } = quotation?.id
-        ? await updateQuotation(quotation.id, payload)
-        : await createQuotation(payload);
+      let saved;
+      if (quotation?.id) {
+        const { data } = await updateQuotation(quotation.id, payload);
+        saved = data;
+      } else {
+        const { data } = await createQuotation(payload);
+        saved = data;
+      }
 
       setQuotation(saved);
-      hasExistingQuoteRef.current = true;
       setQuoteSaved(true);
       setTimeout(() => setQuoteSaved(false), 3000);
-    } catch (err) {
+    } catch {
       /* silently fail for now — could add toast here */
     } finally {
       setSavingQuote(false);
@@ -509,7 +464,7 @@ export default function CustomerDetail() {
           {TABS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
-              onClick={() => handleTabClick(id)}
+              onClick={() => setActiveTab(id)}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
                 activeTab === id
                   ? "bg-teal-600 text-white shadow-sm"
@@ -559,9 +514,10 @@ export default function CustomerDetail() {
                     </p>
                     <select
                       value={selectedIdx}
-                      onChange={(e) =>
-                        handleSelectAssessment(Number(e.target.value))
-                      }
+                      onChange={(e) => {
+                        setSelectedIdx(Number(e.target.value));
+                        setSizing(null); // clear stale display while the new size loads
+                      }}
                       className="border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
                     >
                       {assessments.map((a, i) => (
@@ -574,6 +530,24 @@ export default function CustomerDetail() {
                   </div>
                 )}
 
+                {/* Consumer calculator origin note */}
+                {selectedAssessment?.settings?.source ===
+                  "consumer_calculator" && (
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl px-5 py-3 flex items-start gap-3 mb-4">
+                    <span className="text-blue-500 text-base shrink-0">ℹ️</span>
+                    <div>
+                      <p className="text-sm font-semibold text-blue-700">
+                        From consumer calculator
+                      </p>
+                      <p className="text-xs text-blue-500 mt-0.5">
+                        This assessment was submitted by {customer.name} using
+                        the public calculator. Run a new assessment below to
+                        capture full appliance-level detail.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {/* ResultCard */}
                 {assessmentResult && (
                   <ResultCard
@@ -581,6 +555,12 @@ export default function CustomerDetail() {
                     lifespan={lifespan}
                     suggestedCapex={null}
                     currentCapex={selectedAssessment?.settings?.capex ?? null}
+                    calculatorInputs={
+                      selectedAssessment?.settings?.source ===
+                      "consumer_calculator"
+                        ? null // hide "Get Solar Quote" on installer view
+                        : undefined
+                    }
                   />
                 )}
               </>

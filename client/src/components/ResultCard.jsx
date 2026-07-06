@@ -96,7 +96,7 @@ const MetricCard = ({
 );
 
 /* ─── ResultCard ─────────────────────────────────────────────── */
-export default function ResultCard({ result, lifespan }) {
+export default function ResultCard({ result, lifespan, calculatorInputs }) {
   const { energy, grid, generator, solar, comparison } = result;
   const [animated, setAnimated] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -230,6 +230,12 @@ export default function ResultCard({ result, lifespan }) {
       comparison.savingsPerYear < 0 &&
       (!hasBothSources || (savingsVsReality ?? 0) < 0)) ||
     paybackExceedsLifespan;
+
+  /* Solar is only the recommended action when it's viable AND actually
+     the cheapest of all compared sources (not merely cheaper than the
+     single baseline used for the headline savings number). */
+  const isSolarBestChoice =
+    isSolarViable && comparison.cheapestSource === "Solar";
 
   return (
     <div className="space-y-4 mt-2">
@@ -617,48 +623,49 @@ export default function ResultCard({ result, lifespan }) {
       )}
 
       {/* ── ZONE 5: FINAL CTA ────────────────────────────────────────
-          Only recommends solar when it's actually the viable choice.
-          Shows a neutral message when solar is not viable.
+          Only recommends solar when it's viable AND actually the cheapest
+          of all compared sources — not merely beating the single baseline
+          used for the headline savings figure.
       ─────────────────────────────────────────────────────────── */}
       <div
         className={`rounded-2xl px-6 py-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${
-          isSolarViable ? "bg-teal-600" : "bg-gray-100"
+          isSolarBestChoice ? "bg-teal-600" : "bg-gray-100"
         }`}
       >
         <div className="flex items-center gap-4">
           <div
             className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
-              isSolarViable ? "bg-teal-500" : "bg-gray-200"
+              isSolarBestChoice ? "bg-teal-500" : "bg-gray-200"
             }`}
           >
             <Award
               size={22}
-              className={isSolarViable ? "text-white" : "text-gray-500"}
+              className={isSolarBestChoice ? "text-white" : "text-gray-500"}
               strokeWidth={1.8}
             />
           </div>
           <div>
             <p
               className={`font-display font-bold text-lg leading-tight ${
-                isSolarViable ? "text-white" : "text-gray-700"
+                isSolarBestChoice ? "text-white" : "text-gray-700"
               }`}
             >
-              {isSolarViable
+              {isSolarBestChoice
                 ? `Go Solar — save ${fmtShort(primarySavings)}/yr`
                 : `${comparison.cheapestSource} is your best option right now`}
             </p>
             <p
               className={`text-sm mt-0.5 ${
-                isSolarViable ? "text-teal-200" : "text-gray-500"
+                isSolarBestChoice ? "text-teal-200" : "text-gray-500"
               }`}
             >
-              {isSolarViable
+              {isSolarBestChoice
                 ? "Best option based on your usage and inputs"
                 : "Adjust your inputs or add more appliances to explore solar viability"}
             </p>
           </div>
         </div>
-        {isSolarViable && (
+        {isSolarBestChoice && calculatorInputs !== null && (
           <button
             onClick={() => setShowModal(true)}
             className="shrink-0 bg-white text-teal-700 font-bold text-sm px-5 py-3 rounded-xl hover:bg-teal-50 transition-colors whitespace-nowrap shadow-sm"
@@ -667,6 +674,15 @@ export default function ResultCard({ result, lifespan }) {
           </button>
         )}
       </div>
+
+      {/* Lead submission modal */}
+      {showModal && (
+        <LeadModal
+          onClose={() => setShowModal(false)}
+          calculatorResult={result}
+          calculatorInputs={calculatorInputs ?? null}
+        />
+      )}
 
       {/* Disclaimer */}
       <div className="bg-gray-50 border border-gray-100 rounded-xl px-5 py-4">
@@ -688,18 +704,6 @@ export default function ResultCard({ result, lifespan }) {
           and market conditions.
         </p>
       </div>
-
-      {/* Lead submission modal */}
-      <LeadModal
-        isOpen={showModal}
-        onClose={() => setShowModal(false)}
-        calculatorResult={result}
-        savingsSummary={
-          primarySavingsPositive && isSolarViable
-            ? fmtShort(primarySavings)
-            : undefined
-        }
-      />
     </div>
   );
 }

@@ -67,7 +67,11 @@ export default function ResultsPage() {
 
       {/* Results content */}
       <div className="max-w-3xl mx-auto px-6 py-10">
-        <ResultCard result={result} lifespan={lifespan} />
+        <ResultCard
+          result={result}
+          lifespan={lifespan}
+          calculatorInputs={formValues ?? undefined}
+        />
 
         {/* Bottom edit nudge */}
         <div className="mt-8 text-center">
