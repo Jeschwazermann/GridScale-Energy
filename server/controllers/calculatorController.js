@@ -3,7 +3,7 @@ import { gridCost } from "../services/gridService.js";
 import { generatorCost } from "../services/generatorService.js";
 import { solarCost } from "../services/solarService.js";
 import { compareCosts } from "../services/comparisonService.js";
-import {AppError} from "../utils/AppError.js";
+import { AppError } from "../utils/AppError.js";
 
 export const calculate = async (req, res, next) => {
   try {
@@ -26,7 +26,7 @@ export const calculate = async (req, res, next) => {
     if (!hasGrid && !hasGenerator) {
       const err = new AppError(
         "Include at least one comparison source — Grid or Generator.",
-        400
+        400,
       );
       return next(err);
     }
@@ -49,14 +49,40 @@ export const calculate = async (req, res, next) => {
     if (data.gridHours == null || isNaN(data.gridHours)) {
       const err = new AppError(
         "Select how many hours of grid supply you get daily — this is needed to calculate your load accurately.",
-        400
+        400,
       );
       return next(err);
     }
 
+    /* ── Generator hours validation ──────────────────────────────────
+       Only required when generator is included. Must not push the
+       combined grid + gen hours past 24.                             */
+    if (hasGenerator) {
+      if (data.genHours == null || isNaN(data.genHours)) {
+        const err = new AppError(
+          "Select how many hours you run your generator daily.",
+          400,
+        );
+        return next(err);
+      }
+      const combined = parseFloat(data.gridHours) + parseFloat(data.genHours);
+      if (combined > 24) {
+        const err = new AppError(
+          `Grid hours (${data.gridHours}) + Generator hours (${data.genHours}) = ${combined}hrs, which exceeds 24. Please adjust.`,
+          400,
+        );
+        return next(err);
+      }
+    }
+
     /* ── Energy ──────────────────────────────────────────────────── */
     const gridHoursPerDay = parseFloat(data.gridHours);
-    const energy = calculateEnergy(data.appliances, gridHoursPerDay);
+    const genHoursPerDay = hasGenerator ? parseFloat(data.genHours) : null;
+    const energy = calculateEnergy(
+      data.appliances,
+      gridHoursPerDay,
+      genHoursPerDay,
+    );
 
     /* ── Cost engines ────────────────────────────────────────────── */
     const grid = hasGrid ? gridCost(energy, data.gridTariff) : null;

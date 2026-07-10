@@ -83,26 +83,27 @@ const GEN_EFFICIENCY_OPTIONS = [
 // 24 = full grid supply (no generator needed)
 const GRID_HOUR_OPTIONS = [0, 2, 4, 6, 8, 12, 16, 20, 24];
 
-/* ─── Grid hours contextual label ───────────────────────────── */
-const gridHoursLabel = (hrs, includeGrid, includeGenerator) => {
-  if (hrs === 0) {
-    return includeGenerator
-      ? "No grid — all load falls on generator (and solar as alternative)"
-      : "No grid supply selected";
-  }
-  if (hrs === 24) {
-    return "Full 24hr grid supply — no generator hours assumed";
-  }
-  if (includeGrid && includeGenerator) {
-    return `${hrs}hrs grid · ${24 - hrs}hrs generator per day`;
-  }
-  if (includeGrid) {
-    return `${hrs}hrs of grid supply daily — appliances only run during these hours`;
-  }
-  if (includeGenerator) {
-    return `${24 - hrs}hrs generator per day (${hrs}hrs assumed grid / off)`;
-  }
-  return `${hrs}hrs selected`;
+/* ─── Generator hours options ────────────────────────────────── */
+// Independent of grid hours — user specifies actual run time
+const GEN_HOUR_OPTIONS = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 24];
+
+/* ─── Power supply contextual labels ────────────────────────── */
+const gridHoursLabel = (hrs) => {
+  if (hrs === 0)
+    return "No grid supply — grid cost engine will not apply load during NEPA hours";
+  if (hrs === 24) return "Full 24hr grid supply — no downtime assumed";
+  return `${hrs}hrs of NEPA per day`;
+};
+
+const genHoursLabel = (genHrs, gridHrs) => {
+  const combined = (gridHrs ?? 0) + genHrs;
+  const unpowered = 24 - combined;
+  if (unpowered < 0) return null; // validation handles this case
+  const unpoweredNote =
+    unpowered > 0
+      ? ` · ${unpowered}hr${unpowered !== 1 ? "s" : ""} unpowered (gen off)`
+      : " · No downtime — generator covers all non-NEPA hours";
+  return `${genHrs}hrs generator per day${unpoweredNote}`;
 };
 
 /* ─── Smart CAPEX suggestion ─────────────────────────────────── */
@@ -327,6 +328,12 @@ export default function CalculatorPage() {
   const { state: locationState } = useLocation();
   const savedForm = locationState?.formValues;
 
+  // Scroll to top on mount — prevents scroll position carrying over
+  // from wherever the user clicked "Calculate My Savings" on the landing page
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, []);
+
   const [appliances, setAppliances] = useState(
     savedForm?.appliances ?? [{ ...emptyAppliance }],
   );
@@ -344,6 +351,7 @@ export default function CalculatorPage() {
       capex: "",
       lifespan: "",
       gridHours: null,
+      genHours: null,
     },
   );
   const [loading, setLoading] = useState(false);
@@ -427,6 +435,16 @@ export default function CalculatorPage() {
         "Select how many hours of grid supply you get daily so we can split your load accurately.",
       );
 
+    if (includeGenerator) {
+      if (settings.genHours == null)
+        return setError("Select how many hours you run your generator daily.");
+      const combined = settings.gridHours + settings.genHours;
+      if (combined > 24)
+        return setError(
+          `Grid hours (${settings.gridHours}) + Generator hours (${settings.genHours}) = ${combined}hrs, which exceeds 24. Please adjust.`,
+        );
+    }
+
     if (!settings.capex || !settings.lifespan)
       return setError(
         "Enter the solar system CAPEX and lifespan to complete the calculation.",
@@ -448,6 +466,7 @@ export default function CalculatorPage() {
         ...(includeGenerator && {
           fuelPrice: parseFloat(settings.fuelPrice),
           efficiency: parseFloat(settings.efficiency),
+          genHours: parseFloat(settings.genHours),
         }),
       };
 
@@ -629,26 +648,22 @@ export default function CalculatorPage() {
           </div>
         </SectionCard>
 
-        {/* ── Daily Power Supply ─────────────────────────────────────────
+        {/* ── Daily NEPA Hours ───────────────────────────────────────────
             Shown whenever at least one source is toggled.
-            This is a shared input — it feeds both grid and generator cost
-            engines regardless of which combination is selected.
+            Always independent — does not derive generator hours.
         ─────────────────────────────────────────────────────────────── */}
         {showGridHours && (
           <SectionCard
             icon={Clock}
             iconBg="bg-purple-50"
             iconColor="text-purple-500"
-            title="Daily Power Supply"
+            title="Daily NEPA Supply"
             subtitle={
-              includeGrid && includeGenerator
-                ? "How many hours of NEPA do you typically get? The remaining hours are assumed to be generator time."
-                : includeGrid
-                  ? "How many hours of NEPA do you get daily? Your appliances only consume grid electricity during these hours."
-                  : "How many hours of generator do you run daily? Select 0 if you have no grid supply at all."
+              includeGrid
+                ? "How many hours of grid power do you typically get per day?"
+                : "How many hours of NEPA do you get? Select 0 if you have no grid at all."
             }
           >
-            {/* 3×3 button grid — 0 through 24 */}
             <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
               {GRID_HOUR_OPTIONS.map((hrs) => (
                 <button
@@ -668,19 +683,86 @@ export default function CalculatorPage() {
               ))}
             </div>
 
-            {/* Contextual label after selection */}
             {settings.gridHours != null && (
               <div className="mt-4 flex items-start gap-2 bg-purple-50 border border-purple-100 rounded-xl px-4 py-3">
                 <Clock size={13} className="text-purple-500 shrink-0 mt-0.5" />
                 <p className="text-sm font-medium text-purple-700 leading-snug">
-                  {gridHoursLabel(
-                    settings.gridHours,
-                    includeGrid,
-                    includeGenerator,
-                  )}
+                  {gridHoursLabel(settings.gridHours)}
                 </p>
               </div>
             )}
+          </SectionCard>
+        )}
+
+        {/* ── Daily Generator Hours ──────────────────────────────────────
+            Only shown when generator is toggled.
+            Independent of NEPA hours — user specifies actual run time.
+            Combined hours warning shown when grid + gen > 24.
+        ─────────────────────────────────────────────────────────────── */}
+        {includeGenerator && (
+          <SectionCard
+            icon={Clock}
+            iconBg="bg-orange-50"
+            iconColor="text-orange-500"
+            title="Daily Generator Hours"
+            subtitle="How many hours do you actually run your generator per day? This is independent of NEPA hours."
+          >
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+              {GEN_HOUR_OPTIONS.map((hrs) => (
+                <button
+                  key={hrs}
+                  type="button"
+                  onClick={() =>
+                    setSettings((prev) => ({ ...prev, genHours: hrs }))
+                  }
+                  className={`py-3 rounded-xl text-sm font-semibold border transition-all ${
+                    settings.genHours === hrs
+                      ? "bg-orange-500 border-orange-500 text-white shadow-sm"
+                      : "bg-white border-gray-200 text-gray-700 hover:border-orange-300 hover:text-orange-700"
+                  }`}
+                >
+                  {hrs === 24 ? "All off-grid" : `${hrs}hrs`}
+                </button>
+              ))}
+            </div>
+
+            {settings.genHours != null &&
+              (() => {
+                const combined = (settings.gridHours ?? 0) + settings.genHours;
+                const isOver = combined > 24;
+                const label = genHoursLabel(
+                  settings.genHours,
+                  settings.gridHours,
+                );
+                return (
+                  <>
+                    {label && (
+                      <div className="mt-4 flex items-start gap-2 bg-orange-50 border border-orange-100 rounded-xl px-4 py-3">
+                        <Clock
+                          size={13}
+                          className="text-orange-500 shrink-0 mt-0.5"
+                        />
+                        <p className="text-sm font-medium text-orange-700 leading-snug">
+                          {label}
+                        </p>
+                      </div>
+                    )}
+                    {isOver && (
+                      <div className="mt-2 flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+                        <Clock
+                          size={13}
+                          className="text-red-500 shrink-0 mt-0.5"
+                        />
+                        <p className="text-sm font-medium text-red-600 leading-snug">
+                          ⚠️ Grid ({settings.gridHours}hrs) + Generator (
+                          {settings.genHours}hrs) = {combined}hrs — exceeds 24.
+                          Please reduce one.
+                        </p>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
           </SectionCard>
         )}
 

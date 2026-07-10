@@ -80,6 +80,7 @@ const GEN_EFFICIENCY_OPTIONS = [
 ];
 
 const GRID_HOUR_OPTIONS = [0, 2, 4, 6, 8, 12, 16, 20, 24];
+const GEN_HOUR_OPTIONS = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 24];
 
 /* ─── Smart CAPEX suggestion ─────────────────────────────────── */
 const suggestCapex = (annualKWh) => {
@@ -90,18 +91,23 @@ const suggestCapex = (annualKWh) => {
   return rounded > 0 ? rounded : null;
 };
 
-/* ─── Grid hours label ───────────────────────────────────────── */
-const gridHoursLabel = (hrs, includeGrid, includeGenerator) => {
+/* ─── Power supply contextual labels ────────────────────────── */
+const gridHoursLabel = (hrs) => {
   if (hrs === 0)
-    return includeGenerator
-      ? "No grid — all load falls on generator (and solar as alternative)"
-      : "No grid supply selected";
-  if (hrs === 24) return "Full 24hr grid supply — no generator hours assumed";
-  if (includeGrid && includeGenerator)
-    return `${hrs}hrs grid · ${24 - hrs}hrs generator per day`;
-  if (includeGrid)
-    return `${hrs}hrs of grid supply daily — appliances only run during these hours`;
-  return `${24 - hrs}hrs generator per day`;
+    return "No grid supply — grid cost engine will not apply load during NEPA hours";
+  if (hrs === 24) return "Full 24hr grid supply — no downtime assumed";
+  return `${hrs}hrs of NEPA per day`;
+};
+
+const genHoursLabel = (genHrs, gridHrs) => {
+  const combined = (gridHrs ?? 0) + genHrs;
+  const unpowered = 24 - combined;
+  if (unpowered < 0) return null;
+  const unpoweredNote =
+    unpowered > 0
+      ? ` · ${unpowered}hr${unpowered !== 1 ? "s" : ""} unpowered (gen off)`
+      : " · No downtime — generator covers all non-NEPA hours";
+  return `${genHrs}hrs generator per day${unpoweredNote}`;
 };
 
 /* ─── Shared styles ──────────────────────────────────────────── */
@@ -325,6 +331,20 @@ export default function NewAssessment() {
   const [appliances, setAppliances] = useState([{ ...emptyAppliance }]);
   const [includeGrid, setIncludeGrid] = useState(false);
   const [includeGenerator, setIncludeGenerator] = useState(false);
+
+  /* ── Seed default tariff & fuel price from installer profile ──
+     The lazy initializer covers the common case: profile is already
+     in the auth context when this page mounts (Supabase session is
+     restored synchronously from localStorage before any navigation).
+
+     The effect covers the rare late-arrival case (cold load where
+     profile resolves after mount). It uses a seeded flag encoded
+     directly in the field values — if the field is still empty when
+     profile arrives, fill it in; otherwise leave it alone. This
+     produces at most one extra render and cannot cascade because
+     the effect's dep is `profile?.id`, a stable scalar that only
+     changes when the identity changes, not on every re-render. */
+  // ── Settings state ──
   const [settings, setSettings] = useState({
     gridTariff: "",
     fuelPrice: "",
@@ -332,30 +352,36 @@ export default function NewAssessment() {
     capex: "",
     lifespan: "",
     gridHours: null,
+    genHours: null,
   });
+
+  // ── Seed from profile ONLY once ──
+  const hasInitialized = useRef(false);
+
+  useEffect(() => {
+    if (!profile || hasInitialized.current) return;
+
+    setSettings((prev) => ({
+      ...prev,
+      gridTariff:
+        prev.gridTariff ||
+        (profile.default_grid_tariff != null
+          ? String(profile.default_grid_tariff)
+          : ""),
+      fuelPrice:
+        prev.fuelPrice ||
+        (profile.default_fuel_price != null
+          ? String(profile.default_fuel_price)
+          : ""),
+    }));
+
+    hasInitialized.current = true;
+  }, [profile]);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const showGridHours = includeGrid || includeGenerator;
-
-  /* ── Seed default tariff & fuel price from installer profile ──
-     Only runs once when the profile first loads (or changes identity).
-     Does not overwrite fields the user has already edited, because we
-     only seed when the field is still at its empty initial value. */
-  useEffect(() => {
-    if (!profile) return;
-    setSettings((prev) => ({
-      ...prev,
-      gridTariff:
-        prev.gridTariff === "" && profile.default_grid_tariff != null
-          ? String(profile.default_grid_tariff)
-          : prev.gridTariff,
-      fuelPrice:
-        prev.fuelPrice === "" && profile.default_fuel_price != null
-          ? String(profile.default_fuel_price)
-          : prev.fuelPrice,
-    }));
-  }, [profile]);
 
   /* ── Load customers ──
      The fetch logic lives directly inside the effect instead of being
@@ -488,6 +514,19 @@ export default function NewAssessment() {
       return setError(
         "Select daily grid supply hours to split the load accurately.",
       );
+
+    if (includeGenerator) {
+      if (settings.genHours == null)
+        return setError(
+          "Select how many hours the customer runs their generator daily.",
+        );
+      const combined = settings.gridHours + settings.genHours;
+      if (combined > 24)
+        return setError(
+          `Grid hours (${settings.gridHours}) + Generator hours (${settings.genHours}) = ${combined}hrs — exceeds 24. Please adjust.`,
+        );
+    }
+
     if (!settings.capex || !settings.lifespan)
       return setError("Enter the solar system CAPEX and lifespan.");
 
@@ -508,6 +547,7 @@ export default function NewAssessment() {
         ...(includeGenerator && {
           fuelPrice: parseFloat(settings.fuelPrice),
           efficiency: parseFloat(settings.efficiency),
+          genHours: parseFloat(settings.genHours),
         }),
       };
 
@@ -766,19 +806,17 @@ export default function NewAssessment() {
           </div>
         </SectionCard>
 
-        {/* ── Daily Power Supply ── */}
+        {/* ── Daily NEPA Hours ── */}
         {showGridHours && (
           <SectionCard
             icon={Clock}
             iconBg="bg-purple-50"
             iconColor="text-purple-500"
-            title="Daily Power Supply"
+            title="Daily NEPA Supply"
             subtitle={
-              includeGrid && includeGenerator
-                ? "How many hours of NEPA does the customer get? The rest is generator time."
-                : includeGrid
-                  ? "How many hours of NEPA does the customer get daily?"
-                  : "How many hours does the customer run their generator daily?"
+              includeGrid
+                ? "How many hours of grid power does the customer typically get per day?"
+                : "How many hours of NEPA does the customer get? Select 0 for no grid."
             }
           >
             <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
@@ -803,14 +841,77 @@ export default function NewAssessment() {
               <div className="mt-4 flex items-start gap-2 bg-purple-50 border border-purple-100 rounded-xl px-4 py-3">
                 <Clock size={13} className="text-purple-500 shrink-0 mt-0.5" />
                 <p className="text-sm font-medium text-purple-700 leading-snug">
-                  {gridHoursLabel(
-                    settings.gridHours,
-                    includeGrid,
-                    includeGenerator,
-                  )}
+                  {gridHoursLabel(settings.gridHours)}
                 </p>
               </div>
             )}
+          </SectionCard>
+        )}
+
+        {/* ── Daily Generator Hours ── */}
+        {includeGenerator && (
+          <SectionCard
+            icon={Clock}
+            iconBg="bg-orange-50"
+            iconColor="text-orange-500"
+            title="Daily Generator Hours"
+            subtitle="How many hours does the customer actually run their generator per day? Independent of NEPA hours."
+          >
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+              {GEN_HOUR_OPTIONS.map((hrs) => (
+                <button
+                  key={hrs}
+                  type="button"
+                  onClick={() =>
+                    setSettings((prev) => ({ ...prev, genHours: hrs }))
+                  }
+                  className={`py-3 rounded-xl text-sm font-semibold border transition-all ${
+                    settings.genHours === hrs
+                      ? "bg-orange-500 border-orange-500 text-white shadow-sm"
+                      : "bg-white border-gray-200 text-gray-700 hover:border-orange-300 hover:text-orange-700"
+                  }`}
+                >
+                  {hrs === 24 ? "All off-grid" : `${hrs}hrs`}
+                </button>
+              ))}
+            </div>
+            {settings.genHours != null &&
+              (() => {
+                const combined = (settings.gridHours ?? 0) + settings.genHours;
+                const isOver = combined > 24;
+                const label = genHoursLabel(
+                  settings.genHours,
+                  settings.gridHours,
+                );
+                return (
+                  <>
+                    {label && (
+                      <div className="mt-4 flex items-start gap-2 bg-orange-50 border border-orange-100 rounded-xl px-4 py-3">
+                        <Clock
+                          size={13}
+                          className="text-orange-500 shrink-0 mt-0.5"
+                        />
+                        <p className="text-sm font-medium text-orange-700 leading-snug">
+                          {label}
+                        </p>
+                      </div>
+                    )}
+                    {isOver && (
+                      <div className="mt-2 flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+                        <Clock
+                          size={13}
+                          className="text-red-500 shrink-0 mt-0.5"
+                        />
+                        <p className="text-sm font-medium text-red-600 leading-snug">
+                          ⚠️ Grid ({settings.gridHours}hrs) + Generator (
+                          {settings.genHours}hrs) = {combined}hrs — exceeds 24.
+                          Please reduce one.
+                        </p>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
           </SectionCard>
         )}
 

@@ -71,6 +71,7 @@ export default function ResultsPage() {
           result={result}
           lifespan={lifespan}
           calculatorInputs={formValues ?? undefined}
+          onAdjustInputs={handleEditInputs}
         />
 
         {/* Bottom edit nudge */}

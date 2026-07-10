@@ -161,7 +161,7 @@ export default function LeadModal({
           <form onSubmit={handleSubmit} className="px-6 py-6 space-y-4">
             {/* Name */}
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+              <label className="flex text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 items-center gap-1.5">
                 <User size={11} className="text-gray-400" /> Full Name *
               </label>
               <input
@@ -177,7 +177,7 @@ export default function LeadModal({
 
             {/* Phone */}
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+              <label className="flex text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 items-center gap-1.5">
                 <Phone size={11} className="text-gray-400" /> Phone Number *
               </label>
               <input
@@ -193,7 +193,7 @@ export default function LeadModal({
 
             {/* Email */}
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+              <label className="flex text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 items-center gap-1.5">
                 <Mail size={11} className="text-gray-400" /> Email{" "}
                 <span className="text-gray-300 font-normal normal-case tracking-normal">
                   (optional)
@@ -211,7 +211,7 @@ export default function LeadModal({
 
             {/* State */}
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+              <label className="flex text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 items-center gap-1.5">
                 <MapPin size={11} className="text-gray-400" /> State{" "}
                 <span className="text-gray-300 font-normal normal-case tracking-normal">
                   (optional)
