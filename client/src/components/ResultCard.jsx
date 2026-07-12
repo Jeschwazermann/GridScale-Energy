@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import {
   Sun,
   Zap,
@@ -146,12 +147,19 @@ const MetricCard = ({
 
 /* ─── ResultCard ─────────────────────────────────────────────── */
 export default function ResultCard({
-  result,
-  lifespan,
+  result: resultProp,
+  lifespan: lifespanProp,
   calculatorInputs,
   onAdjustInputs,
 }) {
-  const { energy, grid, generator, solar, comparison } = result;
+  const { state } = useLocation();
+  // Kept available for the route-state values used by related result views.
+  // eslint-disable-next-line no-unused-vars
+  const { result, lifespan, suggestedCapex, currentCapex, formValues } =
+    state ?? {};
+  const resolvedResult = result ?? resultProp;
+  const resolvedLifespan = lifespan ?? lifespanProp;
+  const { energy, grid, generator, solar, comparison } = resolvedResult;
   const [animated, setAnimated] = useState(false);
   const [showModal, setShowModal] = useState(false);
 
@@ -161,7 +169,7 @@ export default function ResultCard({
     return () => clearTimeout(t);
   }, []);
 
-  const lifespanYears = lifespan || 25;
+  const lifespanYears = resolvedLifespan || 25;
 
   /* ── Destructure backend fields ── */
   const {
@@ -202,9 +210,14 @@ export default function ResultCard({
     animated,
   );
 
-  /* Real-world equivalents */
-  const drainEquivalent = getRealWorldEquivalent(monthlyDrain);
-  const savingsEquivalent = getRealWorldEquivalent(monthlySavings);
+  /* R/* Real-world equivalents — only meaningful when generator is involved */
+  const showFuelEquivalent = hasBothSources || comparedAgainst === "Generator";
+  const drainEquivalent = showFuelEquivalent
+    ? getRealWorldEquivalent(monthlyDrain)
+    : null;
+  const savingsEquivalent = showFuelEquivalent
+    ? getRealWorldEquivalent(monthlySavings)
+    : null;
 
   /* Comparison label */
   const comparisonLabel = (
@@ -387,11 +400,19 @@ export default function ResultCard({
                 >
                   {fmtShort(animatedSavings)}/mo
                 </p>
-                {savingsEquivalent && (
+                {savingsEquivalent ? (
                   <p className="text-gray-600 text-xs">
                     That's{" "}
                     <span className="text-teal-500 font-semibold">
                       {savingsEquivalent} a month
+                    </span>{" "}
+                    back in your pocket.
+                  </p>
+                ) : (
+                  <p className="text-gray-600 text-xs">
+                    That's{" "}
+                    <span className="text-teal-500 font-semibold">
+                      {fmtShort(monthlySavings)} every month
                     </span>{" "}
                     back in your pocket.
                   </p>

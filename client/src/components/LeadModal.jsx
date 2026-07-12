@@ -11,7 +11,7 @@ import {
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:3000",
+  baseURL: import.meta.env.VITE_API_URL,
 });
 
 const NIGERIAN_STATES = [
@@ -87,6 +87,14 @@ export default function LeadModal({
     }
 
     setLoading(true);
+
+    console.log("Submitting lead with inputs:", {
+      hasResult: !!calculatorResult,
+      hasInputs: !!calculatorInputs,
+      inputKeys: calculatorInputs ? Object.keys(calculatorInputs) : null,
+      appliances: calculatorInputs?.appliances?.length ?? 0,
+    });
+
     try {
       await api.post("/api/leads", {
         name: form.name.trim(),
