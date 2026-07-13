@@ -10,21 +10,14 @@ import {
   ClipboardList,
   ChevronDown,
   Plus,
-  Trash2,
   AlertCircle,
   Loader,
-  Save,
-  CheckCircle,
 } from "lucide-react";
 import InstallerLayout from "../../layouts/installer";
 import ResultCard from "../../components/ResultCard";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/useAuth";
-import {
-  fetchSizing,
-  createQuotation,
-  updateQuotation,
-} from "../../services/installerApi";
+import { fetchSizing } from "../../services/installerApi";
 
 /* ─── Status config ──────────────────────────────────────────── */
 const STATUS_STYLES = {
@@ -44,13 +37,6 @@ const STATUSES = [
 ];
 
 /* ─── Formatters ─────────────────────────────────────────────── */
-const fmtShort = (v) => {
-  if (!v) return "—";
-  if (v >= 1_000_000) return `₦${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000) return `₦${(v / 1_000).toFixed(0)}K`;
-  return `₦${Math.round(v)}`;
-};
-
 const fmtDate = (d) =>
   d
     ? new Date(d).toLocaleDateString("en-NG", {
@@ -60,14 +46,25 @@ const fmtDate = (d) =>
       })
     : "—";
 
-const fmtNaira = (v) =>
-  v != null
-    ? new Intl.NumberFormat("en-NG", {
-        style: "currency",
-        currency: "NGN",
-        maximumFractionDigits: 0,
-      }).format(v)
-    : "₦0";
+function getApplianceEmoji(name = "") {
+  const n = name.toLowerCase();
+  if (n.includes("tv") || n.includes("television")) return "📺";
+  if (n.includes("fridge") || n.includes("refrigerator")) return "🧊";
+  if (n.includes("ac") || n.includes("air con") || n.includes("aircond"))
+    return "❄️";
+  if (n.includes("washing") || n.includes("washer")) return "🫧";
+  if (n.includes("bulb") || n.includes("light") || n.includes("lamp"))
+    return "💡";
+  if (n.includes("fan")) return "🌀";
+  if (n.includes("freezer")) return "🧊";
+  if (n.includes("microwave") || n.includes("oven")) return "📡";
+  if (n.includes("pump") || n.includes("water")) return "💧";
+  if (n.includes("computer") || n.includes("laptop") || n.includes("pc"))
+    return "💻";
+  if (n.includes("phone") || n.includes("charger")) return "🔌";
+  if (n.includes("iron")) return "👕";
+  return "⚡";
+}
 
 /* ─── Tab definitions ────────────────────────────────────────── */
 const TABS = [
@@ -75,14 +72,6 @@ const TABS = [
   { id: "sizing", label: "System Sizing", icon: Cpu },
   { id: "quotation", label: "Quotation", icon: FileText },
 ];
-
-/* ─── Empty line item ────────────────────────────────────────── */
-const emptyItem = () => ({
-  id: crypto.randomUUID?.() ?? Date.now(),
-  description: "",
-  quantity: 1,
-  unitPrice: 0,
-});
 
 /* ─── CustomerDetail ─────────────────────────────────────────── */
 export default function CustomerDetail() {
@@ -101,119 +90,54 @@ export default function CustomerDetail() {
   const [sizingLoading, setSizingLoading] = useState(false);
   const [sizingError, setSizingError] = useState(null);
 
-  /* Quotation */
-  const [quotation, setQuotation] = useState(null);
-  const [lineItems, setLineItems] = useState([emptyItem()]);
-  const [savingQuote, setSavingQuote] = useState(false);
-  const [quoteSaved, setQuoteSaved] = useState(false);
-  const [notes, setNotes] = useState("");
-  const [validityDate, setValidityDate] = useState("");
+  /* ✅ NEW: track last fetched index safely */
+  const [lastSizedIdx, setLastSizedIdx] = useState(null);
 
   /* Status update */
   const [statusUpdating, setStatusUpdating] = useState(false);
 
-  /* Tracks whether a quotation already existed when the page loaded,
-     so the sizing pre-population logic doesn't depend on a stale
-     closure over `quotation` state. */
-  const hasExistingQuoteRef = useRef(false);
-
-  /* Caches sizing results per assessment id so re-opening the sizing
-     tab, or re-selecting an assessment you've already viewed, doesn't
-     refire a network call. A plain ref is the "useEffect-free" form
-     of memoization here — no extra render, no extra effect. */
-  const sizingCacheRef = useRef(new Map());
-
-  /* Ignores a sizing response if the user has since navigated to a
-     different assessment while the request was in flight. */
-  const sizingRequestIdRef = useRef(null);
-
   /* ── Fetch customer + assessments ──
-     This is the ONLY effect tied to an external input (route `id` +
-     authenticated `user`). Nothing else is allowed to be an effect
-     chained off the state this one sets — sizing is fetched
-     imperatively (see fetchSizingFor below), not reactively, which is
-     what actually stops the cascading-render warning. */
+     Depends on user?.id (stable string) instead of user (object
+     reference). Supabase fires onAuthStateChange on every token
+     refresh, which creates a new user object — causing this effect
+     to re-run even though the actual user hasn't changed. Using
+     user?.id means it only re-runs when the user ID itself changes
+     (i.e. a real sign-in/sign-out), not on token refreshes. */
   useEffect(() => {
-    if (!user || !id) return;
-
+    if (!user?.id || !id) return;
     let cancelled = false;
 
     (async () => {
       setLoading(true);
       setError(null);
 
-      /* Fetch customer, assessments, and quotations in parallel.
-         Separate queries avoid PostgREST embed FK requirement. */
-      const [customerRes, assessmentsRes, quotationsRes] = await Promise.all([
-        supabase
-          .from("customers")
-          .select("*")
-          .eq("id", id)
-          .eq("installer_id", user.id)
-          .limit(1),
-
-        supabase
-          .from("assessments")
-          .select("*")
-          .eq("customer_id", id)
-          .order("created_at", { ascending: false }),
-
-        supabase
-          .from("quotations")
-          .select("*")
-          .eq("customer_id", id)
-          .order("created_at", { ascending: false })
-          .limit(1),
-      ]);
+      const { data, error: err } = await supabase
+        .from("customers")
+        .select("*, assessments(*), quotations(*)")
+        .eq("id", id)
+        .eq("installer_id", user.id)
+        .single();
 
       if (cancelled) return;
 
-      if (customerRes.error) {
-        console.error(
-          "[CustomerDetail] Customer fetch error:",
-          customerRes.error.message,
-        );
-        setError(customerRes.error.message || "Customer not found.");
-        setLoading(false);
-        return;
-      }
-
-      const customerData = customerRes.data?.[0] ?? null;
-      if (!customerData) {
-        console.error("[CustomerDetail] No customer found for id:", id);
+      if (err || !data) {
         setError("Customer not found.");
         setLoading(false);
         return;
       }
 
-      console.log(
-        "[CustomerDetail] Loaded:",
-        customerData.name,
-        "| assessments:",
-        assessmentsRes.data?.length ?? 0,
+      setCustomer(data);
+
+      const sorted = (data.assessments ?? []).sort(
+        (a, b) => new Date(b.created_at) - new Date(a.created_at),
       );
+      setAssessments(sorted);
+      setSelectedIdx(0);
 
-      setCustomer(customerData);
-      setAssessments(assessmentsRes.data ?? []);
-
-      const existingQuote = quotationsRes.data?.[0] ?? null;
-      hasExistingQuoteRef.current = Boolean(existingQuote);
-
-      if (existingQuote) {
-        setQuotation(existingQuote);
-        setLineItems(
-          existingQuote.line_items?.length
-            ? existingQuote.line_items
-            : [emptyItem()],
-        );
-        setNotes(existingQuote.notes ?? "");
-        setValidityDate(existingQuote.validity_date ?? "");
-      } else {
-        setQuotation(null);
-        setLineItems([emptyItem()]);
-        setNotes("");
-        setValidityDate("");
-      }
+      /* ✅ reset sizing state cleanly */
+      setSizing(null);
+      setSizingError(null);
+      setLastSizedIdx(null);
 
       setLoading(false);
     })();
@@ -221,160 +145,69 @@ export default function CustomerDetail() {
     return () => {
       cancelled = true;
     };
-  }, [user, id]);
+  }, [user?.id, id]); // ← was [user, id] — see comment above
 
   /* ── Selected assessment ── */
   const selectedAssessment = assessments[selectedIdx] ?? null;
-  const assessmentResult = selectedAssessment?.results ?? null;
+  const assessmentResult =
+    selectedAssessment?.result ?? selectedAssessment?.results ?? null;
   const lifespan = selectedAssessment?.settings?.lifespan ?? 25;
   const effectiveDailyKWh = assessmentResult?.energy?.effectiveDailyKWh ?? null;
 
-  /* ── Sizing fetch ──
-     Imperative, not effect-driven: called directly from the tab-click
-     handler and the assessment-selector handler below. This is the
-     change that actually removes the cascading-render warning — there
-     is no effect watching `activeTab` / `effectiveDailyKWh` / `sizing`
-     together and re-deriving whether to fetch. The call site simply
-     decides "I need sizing for assessment X" and asks for it. */
-  const fetchSizingFor = async (assessment) => {
-    if (!assessment) return;
+  /* ── Load sizing (SAFE VERSION) ── */
+  const sizingFetchIdRef = useRef(0);
 
-    const kwh = assessment.results?.energy?.effectiveDailyKWh ?? null;
-    if (!kwh) return;
+  useEffect(() => {
+    if (activeTab !== "sizing") return;
+    if (!effectiveDailyKWh) return;
 
-    /* Served from cache — no network call, no loading flicker. */
-    const cached = sizingCacheRef.current.get(assessment.id);
-    if (cached) {
-      setSizing(cached);
+    /* ✅ prevent duplicate fetch */
+    if (lastSizedIdx === selectedIdx) return;
+
+    let cancelled = false;
+    const fetchId = ++sizingFetchIdRef.current;
+
+    (async () => {
+      setSizingLoading(true);
       setSizingError(null);
-      return;
-    }
 
-    sizingRequestIdRef.current = assessment.id;
-    setSizing(null);
-    setSizingLoading(true);
-    setSizingError(null);
+      try {
+        const { data } = await fetchSizing(effectiveDailyKWh);
 
-    try {
-      const { data } = await fetchSizing(kwh);
+        if (cancelled || fetchId !== sizingFetchIdRef.current) return;
 
-      /* Drop this response if the user has since moved to a
-         different assessment while the request was in flight. */
-      if (sizingRequestIdRef.current !== assessment.id) return;
+        setSizing(data);
 
-      sizingCacheRef.current.set(assessment.id, data);
-      setSizing(data);
+        /* ✅ update AFTER success */
+        setLastSizedIdx(selectedIdx);
+      } catch (err) {
+        if (cancelled || fetchId !== sizingFetchIdRef.current) return;
 
-      /* Only auto-populate line items when there was no saved
-         quotation to begin with. */
-      if (!hasExistingQuoteRef.current && data) {
-        setLineItems([
-          {
-            id: 1,
-            description: data.inverter.label,
-            quantity: 1,
-            unitPrice: 0,
-          },
-          { id: 2, description: data.panels.label, quantity: 1, unitPrice: 0 },
-          { id: 3, description: data.battery.label, quantity: 1, unitPrice: 0 },
-          {
-            id: 4,
-            description: "Installation & Labour",
-            quantity: 1,
-            unitPrice: 0,
-          },
-        ]);
+        setSizingError(
+          err?.response?.data?.error || "Sizing calculation failed.",
+        );
+      } finally {
+        if (!cancelled && fetchId === sizingFetchIdRef.current) {
+          setSizingLoading(false);
+        }
       }
-    } catch (err) {
-      if (sizingRequestIdRef.current !== assessment.id) return;
-      setSizingError(err.response?.data?.error || "Sizing calculation failed.");
-    } finally {
-      if (sizingRequestIdRef.current === assessment.id) {
-        setSizingLoading(false);
-      }
-    }
-  };
+    })();
 
-  /* ── Tab click: fetch sizing only when the user actually opens the
-     sizing tab, instead of reactively watching activeTab in an effect. ── */
-  const handleTabClick = (tabId) => {
-    setActiveTab(tabId);
-    if (tabId === "sizing" && selectedAssessment) {
-      void fetchSizingFor(selectedAssessment);
-    }
-  };
-
-  /* ── Switching assessment: refresh sizing only if that tab is
-     already open; otherwise it'll be fetched on next tab click. ── */
-  const handleSelectAssessment = (idx) => {
-    setSelectedIdx(idx);
-    const next = assessments[idx];
-    if (activeTab === "sizing" && next) {
-      void fetchSizingFor(next);
-    }
-  };
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, selectedIdx, effectiveDailyKWh, lastSizedIdx]);
 
   /* ── Update status ── */
   const updateStatus = async (newStatus) => {
     setStatusUpdating(true);
-    const previousStatus = customer.status;
-
-    /* Optimistic update with rollback on failure */
-    setCustomer((prev) => ({ ...prev, status: newStatus }));
-
-    const { error: err } = await supabase
+    await supabase
       .from("customers")
       .update({ status: newStatus, updated_at: new Date().toISOString() })
       .eq("id", id)
       .eq("installer_id", user.id);
-
-    if (err) {
-      setCustomer((prev) => ({ ...prev, status: previousStatus }));
-    }
-
+    setCustomer((prev) => ({ ...prev, status: newStatus }));
     setStatusUpdating(false);
-  };
-
-  /* ── Quotation line item helpers ── */
-  const addLineItem = () => setLineItems((prev) => [...prev, emptyItem()]);
-  const removeLineItem = (itemId) =>
-    setLineItems((prev) => prev.filter((i) => i.id !== itemId));
-  const updateLineItem = (itemId, field, value) =>
-    setLineItems((prev) =>
-      prev.map((i) => (i.id === itemId ? { ...i, [field]: value } : i)),
-    );
-
-  const totalCost = lineItems.reduce(
-    (sum, i) =>
-      sum + (parseFloat(i.quantity) || 0) * (parseFloat(i.unitPrice) || 0),
-    0,
-  );
-
-  /* ── Save quotation ── */
-  const saveQuotation = async () => {
-    if (!selectedAssessment) return;
-    setSavingQuote(true);
-    try {
-      const payload = {
-        assessmentId: selectedAssessment.id,
-        lineItems,
-        notes,
-        validityDate: validityDate || null,
-      };
-
-      const { data: saved } = quotation?.id
-        ? await updateQuotation(quotation.id, payload)
-        : await createQuotation(payload);
-
-      setQuotation(saved);
-      hasExistingQuoteRef.current = true;
-      setQuoteSaved(true);
-      setTimeout(() => setQuoteSaved(false), 3000);
-    } catch (err) {
-      /* silently fail for now — could add toast here */
-    } finally {
-      setSavingQuote(false);
-    }
   };
 
   /* ── Render ── */
@@ -423,7 +256,6 @@ export default function CustomerDetail() {
         {/* ── Customer Header ── */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5">
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-            {/* Avatar + info */}
             <div className="flex items-center gap-4">
               <div className="w-14 h-14 bg-teal-100 rounded-2xl flex items-center justify-center shrink-0">
                 <span className="text-teal-700 text-xl font-bold font-display">
@@ -463,7 +295,6 @@ export default function CustomerDetail() {
               </div>
             </div>
 
-            {/* Status + actions */}
             <div className="flex items-center gap-3 shrink-0">
               <div className="relative">
                 <select
@@ -496,7 +327,6 @@ export default function CustomerDetail() {
             </div>
           </div>
 
-          {/* Added date */}
           <p className="text-xs text-gray-300 mt-4">
             Added {fmtDate(customer.created_at)}
             {assessments.length > 0 &&
@@ -509,7 +339,7 @@ export default function CustomerDetail() {
           {TABS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
-              onClick={() => handleTabClick(id)}
+              onClick={() => setActiveTab(id)}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
                 activeTab === id
                   ? "bg-teal-600 text-white shadow-sm"
@@ -522,74 +352,164 @@ export default function CustomerDetail() {
           ))}
         </div>
 
-        {/* ── Tab: Assessment Results ── */}
-        {activeTab === "assessment" && (
-          <div>
-            {assessments.length === 0 ? (
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-16 text-center">
-                <ClipboardList
-                  size={36}
-                  className="text-gray-200 mx-auto mb-3"
-                />
-                <p className="text-sm font-semibold text-gray-400 mb-1">
-                  No assessments yet
-                </p>
-                <p className="text-xs text-gray-400 mb-4">
-                  Run an assessment to see energy costs and solar savings for
-                  this customer.
-                </p>
-                <Link
-                  to="/installer/new-assessment"
-                  state={{
-                    customerId: customer.id,
-                    customerName: customer.name,
-                  }}
-                  className="inline-flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-all"
-                >
-                  <Plus size={14} /> Run Assessment
-                </Link>
-              </div>
-            ) : (
-              <>
-                {/* Assessment selector (if multiple) */}
-                {assessments.length > 1 && (
-                  <div className="flex items-center gap-3 mb-4">
-                    <p className="text-sm text-gray-500 font-medium shrink-0">
-                      Viewing:
+        {/* ── Tab panels — kept mounted with `hidden` to avoid
+             unmount/remount flicker and redundant re-fetches ── */}
+
+        {/* Assessment Results */}
+        <div className={activeTab === "assessment" ? "" : "hidden"}>
+          {assessments.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-16 text-center">
+              <ClipboardList size={36} className="text-gray-200 mx-auto mb-3" />
+              <p className="text-sm font-semibold text-gray-400 mb-1">
+                No assessments yet
+              </p>
+              <p className="text-xs text-gray-400 mb-4">
+                Run an assessment to see energy costs and solar savings for this
+                customer.
+              </p>
+              <Link
+                to="/installer/new-assessment"
+                state={{
+                  customerId: customer.id,
+                  customerName: customer.name,
+                }}
+                className="inline-flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-all"
+              >
+                <Plus size={14} /> Run Assessment
+              </Link>
+            </div>
+          ) : (
+            <>
+              {assessments.length > 1 && (
+                <div className="flex items-center gap-3 mb-4">
+                  <p className="text-sm text-gray-500 font-medium shrink-0">
+                    Viewing:
+                  </p>
+                  <select
+                    value={selectedIdx}
+                    onChange={(e) => {
+                      setSelectedIdx(Number(e.target.value));
+                      setSizing(null);
+                    }}
+                    className="border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
+                  >
+                    {assessments.map((a, i) => (
+                      <option key={a.id} value={i}>
+                        Assessment {assessments.length - i} —{" "}
+                        {fmtDate(a.created_at)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {selectedAssessment?.settings?.source ===
+                "consumer_calculator" && (
+                <div className="bg-blue-50 border border-blue-100 rounded-xl px-5 py-3 flex items-start gap-3 mb-4">
+                  <span className="text-blue-500 text-base shrink-0">ℹ️</span>
+                  <div>
+                    <p className="text-sm font-semibold text-blue-700">
+                      From consumer calculator
                     </p>
-                    <select
-                      value={selectedIdx}
-                      onChange={(e) =>
-                        handleSelectAssessment(Number(e.target.value))
-                      }
-                      className="border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
-                    >
-                      {assessments.map((a, i) => (
-                        <option key={a.id} value={i}>
-                          Assessment {assessments.length - i} —{" "}
-                          {fmtDate(a.created_at)}
-                        </option>
-                      ))}
-                    </select>
+                    <p className="text-xs text-blue-500 mt-0.5">
+                      This assessment was submitted by {customer.name} using the
+                      public calculator. Run a new assessment below to capture
+                      full appliance-level detail.
+                    </p>
                   </div>
-                )}
+                </div>
+              )}
 
-                {/* ResultCard */}
-                {assessmentResult && (
-                  <ResultCard
-                    result={assessmentResult}
-                    lifespan={lifespan}
-                    suggestedCapex={null}
-                    currentCapex={selectedAssessment?.settings?.capex ?? null}
-                  />
-                )}
-              </>
-            )}
-          </div>
-        )}
+              {assessmentResult && (
+                <ResultCard
+                  result={assessmentResult}
+                  lifespan={lifespan}
+                  suggestedCapex={null}
+                  currentCapex={selectedAssessment?.settings?.capex ?? null}
+                  calculatorInputs={
+                    selectedAssessment?.settings?.source ===
+                    "consumer_calculator"
+                      ? null
+                      : undefined
+                  }
+                />
+              )}
 
-        {/* ── Tab: System Sizing ── */}
-        {activeTab === "sizing" && (
+              {selectedAssessment?.appliances?.length > 0 && (
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                  <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-5">
+                    Appliances Entered
+                  </p>
+
+                  <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 mb-2 px-1">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-300">
+                      Appliance
+                    </span>
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-300 text-right">
+                      Power
+                    </span>
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-300 text-right">
+                      Daily use
+                    </span>
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-300 text-right">
+                      Units
+                    </span>
+                  </div>
+
+                  <div className="divide-y divide-gray-50">
+                    {selectedAssessment.appliances.map((a, i) => (
+                      <div
+                        key={i}
+                        className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 items-center py-3 px-1 hover:bg-gray-50/60 rounded-lg transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
+                            <span className="text-sm">
+                              {getApplianceEmoji(a.name)}
+                            </span>
+                          </div>
+                          <span className="text-sm font-medium text-gray-700 truncate">
+                            {a.name || `Appliance ${i + 1}`}
+                          </span>
+                        </div>
+                        <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full whitespace-nowrap">
+                          {a.power}W
+                        </span>
+                        <span className="text-sm text-gray-500 text-right whitespace-nowrap">
+                          {a.hours} hrs
+                        </span>
+                        <div className="flex justify-end">
+                          <span className="text-xs font-semibold text-gray-500 bg-gray-100 w-6 h-6 rounded-full flex items-center justify-center">
+                            {a.units}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
+                    <span className="text-xs text-gray-400">
+                      {selectedAssessment.appliances.length} appliance
+                      {selectedAssessment.appliances.length !== 1 ? "s" : ""}
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      Total load:{" "}
+                      <span className="font-semibold text-gray-600">
+                        {selectedAssessment.appliances
+                          .reduce((sum, a) => sum + (a.power * a.units || 0), 0)
+                          .toLocaleString()}
+                        W
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* System Sizing */}
+        <div className={activeTab === "sizing" ? "" : "hidden"}>
           <div className="space-y-4">
             {!effectiveDailyKWh ? (
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-12 text-center">
@@ -612,7 +532,6 @@ export default function CustomerDetail() {
               </div>
             ) : sizing ? (
               <>
-                {/* Load summary */}
                 <div className="bg-teal-600 rounded-2xl p-6 text-white">
                   <p className="text-teal-200 text-xs font-bold uppercase tracking-widest mb-2">
                     Effective Daily Load
@@ -628,7 +547,6 @@ export default function CustomerDetail() {
                   </p>
                 </div>
 
-                {/* System specs */}
                 <div className="grid md:grid-cols-3 gap-4">
                   {[
                     {
@@ -668,7 +586,6 @@ export default function CustomerDetail() {
                   ))}
                 </div>
 
-                {/* CAPEX range */}
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5">
                   <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3">
                     Estimated CAPEX Range
@@ -676,11 +593,15 @@ export default function CustomerDetail() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-display font-extrabold text-3xl text-gray-900">
-                        {fmtShort(sizing.capex.min)}
+                        {sizing.capex.min >= 1_000_000
+                          ? `₦${(sizing.capex.min / 1_000_000).toFixed(1)}M`
+                          : `₦${(sizing.capex.min / 1_000).toFixed(0)}K`}
                         <span className="text-gray-300 font-normal mx-2">
                           —
                         </span>
-                        {fmtShort(sizing.capex.max)}
+                        {sizing.capex.max >= 1_000_000
+                          ? `₦${(sizing.capex.max / 1_000_000).toFixed(1)}M`
+                          : `₦${(sizing.capex.max / 1_000).toFixed(0)}K`}
                       </p>
                       <p className="text-xs text-gray-400 mt-1">
                         {sizing.capex.tier} system · Nigerian market pricing
@@ -697,188 +618,43 @@ export default function CustomerDetail() {
               </>
             ) : null}
           </div>
-        )}
+        </div>
 
-        {/* ── Tab: Quotation ── */}
-        {activeTab === "quotation" && (
-          <div className="space-y-4">
-            {!selectedAssessment ? (
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-12 text-center">
-                <FileText size={36} className="text-gray-200 mx-auto mb-3" />
-                <p className="text-sm font-semibold text-gray-400">
-                  Run an assessment before building a quotation.
+        {/* Quotation */}
+        <div className={activeTab === "quotation" ? "" : "hidden"}>
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-400 mb-2">
+                  Quotation Builder
+                </p>
+                <h2 className="font-display font-bold text-gray-900 text-xl">
+                  Open the dedicated quotation workspace
+                </h2>
+                <p className="text-sm text-gray-500 mt-2 max-w-2xl">
+                  Build, update, and save quotations for this customer from a
+                  full-screen page with the selected assessment context.
                 </p>
               </div>
+              <Link
+                to={`/installer/customers/${customer.id}/quotation-builder`}
+                className="inline-flex items-center justify-center gap-2 bg-teal-600 hover:bg-teal-700 text-white font-semibold text-sm px-5 py-3 rounded-xl transition-all"
+              >
+                <FileText size={15} /> Open Builder
+              </Link>
+            </div>
+
+            {!selectedAssessment ? (
+              <div className="mt-6 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-5 py-4 text-sm text-gray-500">
+                Run an assessment first to start building a quotation.
+              </div>
             ) : (
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                {/* Quotation header */}
-                <div className="px-6 py-5 border-b border-gray-50 flex items-center justify-between">
-                  <div>
-                    <h2 className="font-display font-bold text-gray-900">
-                      Quotation Builder
-                    </h2>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      For {customer.name} · Based on assessment{" "}
-                      {fmtDate(selectedAssessment.created_at)}
-                    </p>
-                  </div>
-                  {quoteSaved && (
-                    <span className="flex items-center gap-1.5 text-xs font-semibold text-teal-600">
-                      <CheckCircle size={14} /> Saved
-                    </span>
-                  )}
-                </div>
-
-                <div className="px-6 py-6 space-y-6">
-                  {/* Line items table */}
-                  <div>
-                    <div className="hidden md:grid grid-cols-[3fr_1fr_1fr_1fr_36px] gap-3 mb-2">
-                      {[
-                        "Description",
-                        "Qty",
-                        "Unit Price (₦)",
-                        "Total",
-                        "",
-                      ].map((h) => (
-                        <span
-                          key={h}
-                          className="text-xs font-semibold text-gray-400 uppercase tracking-wide"
-                        >
-                          {h}
-                        </span>
-                      ))}
-                    </div>
-
-                    <div className="space-y-2">
-                      {lineItems.map((item) => (
-                        <div
-                          key={item.id}
-                          className="grid grid-cols-1 md:grid-cols-[3fr_1fr_1fr_1fr_36px] gap-2 items-center"
-                        >
-                          <input
-                            type="text"
-                            placeholder="e.g. 5kVA Inverter"
-                            value={item.description}
-                            onChange={(e) =>
-                              updateLineItem(
-                                item.id,
-                                "description",
-                                e.target.value,
-                              )
-                            }
-                            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition"
-                          />
-                          <input
-                            type="number"
-                            min="1"
-                            placeholder="1"
-                            value={item.quantity}
-                            onChange={(e) =>
-                              updateLineItem(
-                                item.id,
-                                "quantity",
-                                e.target.value,
-                              )
-                            }
-                            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition"
-                          />
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="0"
-                            value={item.unitPrice}
-                            onChange={(e) =>
-                              updateLineItem(
-                                item.id,
-                                "unitPrice",
-                                e.target.value,
-                              )
-                            }
-                            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition"
-                          />
-                          <p className="text-sm font-semibold text-gray-700 px-1">
-                            {fmtShort(
-                              (parseFloat(item.quantity) || 0) *
-                                (parseFloat(item.unitPrice) || 0),
-                            )}
-                          </p>
-                          <button
-                            onClick={() => removeLineItem(item.id)}
-                            disabled={lineItems.length === 1}
-                            className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 disabled:opacity-20 transition-all"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-
-                    <button
-                      onClick={addLineItem}
-                      className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-teal-600 hover:text-teal-700 transition-colors"
-                    >
-                      <Plus size={15} /> Add Line Item
-                    </button>
-                  </div>
-
-                  {/* Total */}
-                  <div className="bg-gray-50 rounded-xl px-5 py-4 flex items-center justify-between">
-                    <p className="text-sm font-semibold text-gray-600">Total</p>
-                    <p className="font-display font-extrabold text-2xl text-gray-900">
-                      {fmtNaira(totalCost)}
-                    </p>
-                  </div>
-
-                  {/* Validity + notes */}
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                        Valid Until
-                      </label>
-                      <input
-                        type="date"
-                        value={validityDate}
-                        onChange={(e) => setValidityDate(e.target.value)}
-                        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                        Notes / Payment Terms
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. 50% upfront, balance on installation"
-                        value={notes}
-                        onChange={(e) => setNotes(e.target.value)}
-                        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-3 pt-2">
-                    <button
-                      onClick={saveQuotation}
-                      disabled={savingQuote}
-                      className="inline-flex items-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white font-semibold text-sm px-5 py-3 rounded-xl transition-all"
-                    >
-                      {savingQuote ? (
-                        <Loader size={15} className="animate-spin" />
-                      ) : (
-                        <Save size={15} />
-                      )}
-                      {quotation?.id ? "Update Quotation" : "Save Quotation"}
-                    </button>
-                    <p className="text-xs text-gray-400">
-                      PDF download coming soon
-                    </p>
-                  </div>
-                </div>
+              <div className="mt-6 rounded-xl border border-gray-100 bg-gray-50 px-5 py-4 text-sm text-gray-600">
+                Current assessment: {fmtDate(selectedAssessment.created_at)}
               </div>
             )}
           </div>
-        )}
+        </div>
       </div>
     </InstallerLayout>
   );

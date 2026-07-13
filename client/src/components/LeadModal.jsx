@@ -1,10 +1,20 @@
 import { useState } from "react";
-import { X, Sun, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import {
+  X,
+  Phone,
+  Mail,
+  MapPin,
+  User,
+  CheckCircle,
+  Loader,
+} from "lucide-react";
+import axios from "axios";
 
-const API_URL = import.meta.env.VITE_API_URL;
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL,
+});
 
-/* Nigerian states list */
-const NG_STATES = [
+const NIGERIAN_STATES = [
   "Abia",
   "Adamawa",
   "Akwa Ibom",
@@ -19,7 +29,7 @@ const NG_STATES = [
   "Edo",
   "Ekiti",
   "Enugu",
-  "FCT",
+  "FCT - Abuja",
   "Gombe",
   "Imo",
   "Jigawa",
@@ -44,283 +54,234 @@ const NG_STATES = [
   "Zamfara",
 ];
 
-/* ── LeadModal ──────────────────────────────────────────────────────────────
-   Props:
-   - isOpen: boolean
-   - onClose: () => void
-   - calculatorResult: object  (the full result object from the calculator)
-   - savingsSummary: string    (e.g. "₦240K/yr")
-────────────────────────────────────────────────────────────────────────── */
+const inp =
+  "w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition";
+
 export default function LeadModal({
-  isOpen,
   onClose,
   calculatorResult,
-  savingsSummary,
+  calculatorInputs,
 }) {
   const [form, setForm] = useState({
     name: "",
     phone: "",
     email: "",
     state: "",
-    lga: "",
   });
-  const [status, setStatus] = useState("idle"); // idle | loading | success | error
-  const [errorMsg, setErrorMsg] = useState("");
-
-  if (!isOpen) return null;
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState(null);
 
   const handleChange = (e) => {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setStatus("loading");
-    setErrorMsg("");
+    setError(null);
+
+    if (!form.name.trim() || !form.phone.trim()) {
+      setError("Your name and phone number are required.");
+      return;
+    }
+
+    setLoading(true);
+
+    // console.log("Submitting lead with inputs:", {
+    //   hasResult: !!calculatorResult,
+    //   hasInputs: !!calculatorInputs,
+    //   inputKeys: calculatorInputs ? Object.keys(calculatorInputs) : null,
+    //   appliances: calculatorInputs?.appliances?.length ?? 0,
+    // });
 
     try {
-      const res = await fetch(`${API_URL}/api/leads`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: form.name.trim(),
-          phone: form.phone.trim(),
-          email: form.email.trim() || undefined,
-          state: form.state || undefined,
-          lga: form.lga.trim() || undefined,
-          calculatorResult: calculatorResult || undefined,
-        }),
+      await api.post("/api/leads", {
+        name: form.name.trim(),
+        phone: form.phone.trim(),
+        email: form.email.trim() || null,
+        state: form.state || null,
+        calculatorResult: calculatorResult ?? null,
+        calculatorInputs: calculatorInputs ?? null,
       });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(
-          data.message || "Something went wrong. Please try again.",
-        );
-      }
-
-      setStatus("success");
+      setSuccess(true);
     } catch (err) {
-      setStatus("error");
-      setErrorMsg(err.message);
+      setError(
+        err.response?.data?.error || "Something went wrong. Please try again.",
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleClose = () => {
-    // Reset state on close so the modal is clean next time
-    setForm({ name: "", phone: "", email: "", state: "", lga: "" });
-    setStatus("idle");
-    setErrorMsg("");
-    onClose();
-  };
-
   return (
-    /* Backdrop */
+    /* Overlay */
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-      onClick={(e) => e.target === e.currentTarget && handleClose()}
+      className="fixed inset-0 z-50 flex items-center justify-center px-4"
+      style={{ background: "rgba(0,0,0,0.5)" }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
-      {/* Panel */}
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden">
-        {/* ── Success state ── */}
-        {status === "success" ? (
-          <div className="px-8 py-10 text-center">
-            <div className="w-16 h-16 bg-teal-100 rounded-full flex items-center justify-center mx-auto mb-5">
-              <CheckCircle
-                size={32}
-                className="text-teal-600"
-                strokeWidth={1.8}
-              />
-            </div>
-            <h2 className="font-display font-bold text-2xl text-gray-900 mb-2">
-              Request sent!
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+        {/* ── Header ── */}
+        <div className="bg-teal-600 px-6 py-5 flex items-start justify-between">
+          <div>
+            <h2 className="font-display font-bold text-white text-lg">
+              Get connected with a solar installer
             </h2>
+            <p className="text-teal-200 text-xs mt-1">
+              A verified GridScale Africa installer will contact you about your
+              assessment.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-teal-200 hover:text-white transition-colors shrink-0 ml-4 mt-0.5"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {success ? (
+          /* ── Success state ── */
+          <div className="px-6 py-10 text-center">
+            <div className="w-14 h-14 bg-teal-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <CheckCircle size={28} className="text-teal-600" />
+            </div>
+            <h3 className="font-display font-bold text-xl text-gray-900 mb-2">
+              Request submitted!
+            </h3>
             <p className="text-gray-500 text-sm leading-relaxed mb-6">
-              A solar installer in your area will be in touch shortly. Keep your
-              phone handy.
+              A solar installer will reach out to{" "}
+              <strong className="text-gray-700">{form.name}</strong> on{" "}
+              <strong className="text-gray-700">{form.phone}</strong> shortly.
             </p>
             <button
-              onClick={handleClose}
-              className="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 rounded-xl transition-colors"
+              onClick={onClose}
+              className="bg-teal-600 hover:bg-teal-700 text-white font-semibold px-6 py-2.5 rounded-xl transition-all text-sm"
             >
               Done
             </button>
           </div>
         ) : (
-          <>
-            {/* ── Header ── */}
-            <div className="bg-teal-600 px-6 py-5 flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-teal-500 rounded-xl flex items-center justify-center shrink-0">
-                  <Sun size={20} className="text-white" strokeWidth={1.8} />
-                </div>
-                <div>
-                  <h2 className="font-display font-bold text-white text-lg leading-tight">
-                    Get your solar quote
-                  </h2>
-                  {savingsSummary && (
-                    <p className="text-teal-200 text-xs mt-0.5">
-                      Based on your results — save {savingsSummary}/yr
-                    </p>
-                  )}
-                </div>
-              </div>
-              <button
-                onClick={handleClose}
-                className="text-teal-300 hover:text-white transition-colors mt-0.5 shrink-0"
-                aria-label="Close"
-              >
-                <X size={20} />
-              </button>
+          /* ── Form ── */
+          <form onSubmit={handleSubmit} className="px-6 py-6 space-y-4">
+            {/* Name */}
+            <div>
+              <label className="flex text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 items-center gap-1.5">
+                <User size={11} className="text-gray-400" /> Full Name *
+              </label>
+              <input
+                type="text"
+                name="name"
+                placeholder="e.g. Emeka Okonkwo"
+                value={form.name}
+                onChange={handleChange}
+                required
+                className={inp}
+              />
             </div>
 
-            {/* ── Form ── */}
-            <form onSubmit={handleSubmit} className="px-6 py-6 space-y-4">
-              <p className="text-xs text-gray-400 leading-relaxed -mt-1">
-                A verified installer will contact you with a personalised
-                quotation — no commitment required.
-              </p>
+            {/* Phone */}
+            <div>
+              <label className="flex text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 items-center gap-1.5">
+                <Phone size={11} className="text-gray-400" /> Phone Number *
+              </label>
+              <input
+                type="tel"
+                name="phone"
+                placeholder="e.g. 08012345678"
+                value={form.phone}
+                onChange={handleChange}
+                required
+                className={inp}
+              />
+            </div>
 
-              {/* Name */}
-              <div>
-                <label
-                  className="block text-xs font-semibold text-gray-600 mb-1.5"
-                  htmlFor="lead-name"
-                >
-                  Full name <span className="text-red-400">*</span>
-                </label>
-                <input
-                  id="lead-name"
-                  name="name"
-                  type="text"
-                  required
-                  autoComplete="name"
-                  placeholder="e.g. Emeka Okafor"
-                  value={form.name}
-                  onChange={handleChange}
-                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition"
-                />
-              </div>
+            {/* Email */}
+            <div>
+              <label className="flex text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 items-center gap-1.5">
+                <Mail size={11} className="text-gray-400" /> Email{" "}
+                <span className="text-gray-300 font-normal normal-case tracking-normal">
+                  (optional)
+                </span>
+              </label>
+              <input
+                type="email"
+                name="email"
+                placeholder="you@email.com"
+                value={form.email}
+                onChange={handleChange}
+                className={inp}
+              />
+            </div>
 
-              {/* Phone */}
-              <div>
-                <label
-                  className="block text-xs font-semibold text-gray-600 mb-1.5"
-                  htmlFor="lead-phone"
-                >
-                  Phone number <span className="text-red-400">*</span>
-                </label>
-                <input
-                  id="lead-phone"
-                  name="phone"
-                  type="tel"
-                  required
-                  autoComplete="tel"
-                  placeholder="e.g. 08012345678"
-                  value={form.phone}
-                  onChange={handleChange}
-                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition"
-                />
-              </div>
-
-              {/* Email */}
-              <div>
-                <label
-                  className="block text-xs font-semibold text-gray-600 mb-1.5"
-                  htmlFor="lead-email"
-                >
-                  Email{" "}
-                  <span className="text-gray-300 font-normal">(optional)</span>
-                </label>
-                <input
-                  id="lead-email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  placeholder="you@example.com"
-                  value={form.email}
-                  onChange={handleChange}
-                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition"
-                />
-              </div>
-
-              {/* State + LGA row */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label
-                    className="block text-xs font-semibold text-gray-600 mb-1.5"
-                    htmlFor="lead-state"
-                  >
-                    State
-                  </label>
-                  <select
-                    id="lead-state"
-                    name="state"
-                    value={form.state}
-                    onChange={handleChange}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-3 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition bg-white"
-                  >
-                    <option value="">Select state</option>
-                    {NG_STATES.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label
-                    className="block text-xs font-semibold text-gray-600 mb-1.5"
-                    htmlFor="lead-lga"
-                  >
-                    LGA / Area
-                  </label>
-                  <input
-                    id="lead-lga"
-                    name="lga"
-                    type="text"
-                    placeholder="e.g. Lekki"
-                    value={form.lga}
-                    onChange={handleChange}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-3 text-sm text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition"
-                  />
-                </div>
-              </div>
-
-              {/* Error message */}
-              {status === "error" && (
-                <div className="flex items-start gap-2.5 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
-                  <AlertCircle
-                    size={16}
-                    className="text-red-500 shrink-0 mt-0.5"
-                    strokeWidth={1.8}
-                  />
-                  <p className="text-sm text-red-700">{errorMsg}</p>
-                </div>
-              )}
-
-              {/* Submit */}
-              <button
-                type="submit"
-                disabled={status === "loading"}
-                className="w-full bg-teal-600 hover:bg-teal-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl transition-colors flex items-center justify-center gap-2 text-sm"
+            {/* State */}
+            <div>
+              <label className="flex text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 items-center gap-1.5">
+                <MapPin size={11} className="text-gray-400" /> State{" "}
+                <span className="text-gray-300 font-normal normal-case tracking-normal">
+                  (optional)
+                </span>
+              </label>
+              <select
+                name="state"
+                value={form.state}
+                onChange={handleChange}
+                className={`${inp} appearance-none`}
               >
-                {status === "loading" ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    Submitting…
-                  </>
-                ) : (
-                  "Request my free quote →"
-                )}
-              </button>
+                <option value="">Select your state…</option>
+                {NIGERIAN_STATES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-              <p className="text-center text-xs text-gray-300">
-                Your details are only shared with verified installers.
+            {/* Savings snapshot — shown if available */}
+            {calculatorResult?.comparison?.savingsPerYear > 0 && (
+              <div className="bg-teal-50 border border-teal-100 rounded-xl px-4 py-3 text-sm text-teal-700">
+                ☀️ Your assessment shows potential savings of{" "}
+                <strong>
+                  ₦
+                  {(calculatorResult.comparison.savingsPerYear / 1000).toFixed(
+                    0,
+                  )}
+                  K/yr
+                </strong>{" "}
+                — this will be shared with the installer automatically.
+              </div>
+            )}
+
+            {/* Error */}
+            {error && (
+              <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+                {error}
               </p>
-            </form>
-          </>
+            )}
+
+            {/* Submit */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white font-bold font-display py-3.5 rounded-xl transition-all flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <Loader size={16} className="animate-spin" /> Submitting…
+                </>
+              ) : (
+                "Connect Me with an Installer"
+              )}
+            </button>
+
+            <p className="text-xs text-gray-400 text-center">
+              Your details are only shared with verified GridScale Africa
+              installers.
+            </p>
+          </form>
         )}
       </div>
     </div>

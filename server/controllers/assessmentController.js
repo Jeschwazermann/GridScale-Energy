@@ -48,8 +48,31 @@ export const createAssessment = async (req, res, next) => {
       return next(err);
     }
 
+    if (hasGenerator) {
+      if (data.genHours == null || isNaN(data.genHours)) {
+        const err = new AppError(
+          "Generator hours per day is required when generator is included.",
+          400,
+        );
+        return next(err);
+      }
+      const combined = parseFloat(data.gridHours) + parseFloat(data.genHours);
+      if (combined > 24) {
+        const err = new AppError(
+          `Grid hours (${data.gridHours}) + Generator hours (${data.genHours}) = ${combined}hrs, which exceeds 24. Please adjust.`,
+          400,
+        );
+        return next(err);
+      }
+    }
+
     /* ── Run calculation ── */
-    const energy = calculateEnergy(data.appliances, parseFloat(data.gridHours));
+    const genHoursPerDay = hasGenerator ? parseFloat(data.genHours) : null;
+    const energy = calculateEnergy(
+      data.appliances,
+      parseFloat(data.gridHours),
+      genHoursPerDay,
+    );
     const grid = hasGrid ? gridCost(energy, data.gridTariff) : null;
     const generator = hasGenerator
       ? generatorCost(energy, data.fuelPrice, data.efficiency)
@@ -80,6 +103,7 @@ export const createAssessment = async (req, res, next) => {
           capex: data.capex,
           lifespan: data.lifespan,
           gridHours: data.gridHours,
+          genHours: data.genHours ?? null,
         },
         results: result,
       })

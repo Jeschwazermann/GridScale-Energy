@@ -3,7 +3,11 @@
 const DIVERSITY_FACTOR = 1.25; // 25% buffer for secondary/unreported appliances
 const SYSTEM_EFFICIENCY = 0.8; // 80% — accounts for inverter, battery & wiring losses
 
-export const calculateEnergy = (appliances, gridHoursPerDay = 24) => {
+export const calculateEnergy = (
+  appliances,
+  gridHoursPerDay = 24,
+  genHoursPerDay = null,
+) => {
   /* 1. Raw consumption from user inputs */
   let annualKWh = 0;
   appliances.forEach((item) => {
@@ -11,11 +15,27 @@ export const calculateEnergy = (appliances, gridHoursPerDay = 24) => {
     annualKWh += kWh;
   });
 
-  /* 2. Grid / generator split — based on raw consumption.
-        Cost engines (grid, generator) only charge for what the
-        user actually consumes, not the system sizing load. */
-  const gridFraction = Math.min(Math.max(gridHoursPerDay, 0), 24) / 24;
-  const offGridFraction = 1 - gridFraction;
+  /* 2. Grid / generator split — each source has its own independent fraction.
+        Grid and generator hours are specified separately by the user.
+        They can add up to less than 24hrs (unpowered downtime is valid).
+        The only constraint enforced upstream is that combined hrs ≤ 24.
+
+        If genHoursPerDay is not provided (legacy callers or grid-only mode),
+        it falls back to the old derived behaviour: offGrid = 24 - gridHours. */
+  const clampedGridHrs = Math.min(Math.max(gridHoursPerDay, 0), 24);
+  const gridFraction = clampedGridHrs / 24;
+
+  let genFraction;
+  if (genHoursPerDay != null) {
+    const clampedGenHrs = Math.min(
+      Math.max(genHoursPerDay, 0),
+      24 - clampedGridHrs, // can't exceed remaining hours
+    );
+    genFraction = clampedGenHrs / 24;
+  } else {
+    // Legacy fallback: generator covers whatever grid doesn't
+    genFraction = 1 - gridFraction;
+  }
 
   /* 3. Effective load — used for solar system sizing and CAPEX estimation only.
         Step A: apply diversity factor (secondary appliances)
@@ -28,8 +48,9 @@ export const calculateEnergy = (appliances, gridHoursPerDay = 24) => {
     annualKWh,
     monthlyKWh: annualKWh / 12,
     gridKWh: annualKWh * gridFraction,
-    offGridKWh: annualKWh * offGridFraction,
+    offGridKWh: annualKWh * genFraction, // generator's share of the load
     gridHoursPerDay,
+    genHoursPerDay: genHoursPerDay ?? 24 - clampedGridHrs, // preserve for display
 
     /* ── For CAPEX estimation (corrected) ── */
     effectiveAnnualKWh,

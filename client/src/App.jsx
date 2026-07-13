@@ -13,7 +13,8 @@ import SignupPage from "./pages/installer/SignupPage";
 import DashboardHome from "./pages/installer/DashboardHome";
 import CustomerList from "./pages/installer/CustomerList";
 import CustomerDetail from "./pages/installer/CustomerDetail";
-import NewAssessment from "./pages/installer/NewAssessment";
+import QuotationBuilderPage from "./pages/installer/QuotationBuilderPage";
+import NewAssessment from "./pages/installer/new-assessment/NewAssessment";
 import LeadsPage from "./pages/installer/LeadsPage";
 import SettingsPage from "./pages/installer/SettingsPage";
 
@@ -94,6 +95,16 @@ export default function App() {
             <ProtectedRoute>
               <ErrorBoundary>
                 <CustomerDetail />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/installer/customers/:id/quotation-builder"
+          element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <QuotationBuilderPage />
               </ErrorBoundary>
             </ProtectedRoute>
           }

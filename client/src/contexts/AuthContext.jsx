@@ -59,7 +59,13 @@ export function AuthProvider({ children }) {
     if (session?.user) await fetchProfile(session.user.id);
   };
 
-  /* ── Listen to auth state changes ── */
+  /* ── Listen to auth state changes ──
+     Only fetch the profile on events where the user identity actually
+     changes — SIGNED_IN and INITIAL_SESSION. TOKEN_REFRESHED fires
+     every time Supabase silently rotates the JWT (on tab focus, on
+     expiry) but the installer's profile data hasn't changed, so
+     hitting /installers again is wasteful and causes cascading
+     re-renders in any component that depends on `user`. */
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
@@ -69,13 +75,16 @@ export function AuthProvider({ children }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        await fetchProfile(session.user.id);
-      } else {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // Only act on real auth events, not TOKEN_REFRESHED or reconnects
+      if (event === "SIGNED_IN" || event === "INITIAL_SESSION") {
+        setUser(session?.user ?? null);
+        if (session?.user) await fetchProfile(session.user.id);
+      } else if (event === "SIGNED_OUT") {
+        setUser(null);
         setProfile(null);
       }
+      // TOKEN_REFRESHED, USER_UPDATED etc. — do nothing, avoids spurious re-fetches
     });
 
     return () => subscription.unsubscribe();
@@ -83,9 +92,6 @@ export function AuthProvider({ children }) {
 
   /* ── Sign up ── */
   const signUp = async ({ email, password, companyName, contactName }) => {
-    /* Store company/contact in auth metadata so fetchProfile can
-       create the installers row on first login if email confirmation
-       is ON (session is null at signup time, RLS would block insert) */
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -98,9 +104,6 @@ export function AuthProvider({ children }) {
     });
     if (error) throw error;
 
-    /* Only insert profile immediately if session is active —
-       meaning email confirmation is OFF. If confirmation is ON,
-       data.session is null and fetchProfile handles it on first login. */
     if (data.user && data.session) {
       const { error: profileError } = await supabase.from("installers").upsert(
         {
