@@ -5,7 +5,7 @@ import {
   CATEGORY_ICONS,
   EMPTY_APPLIANCE,
   inp,
-} from "./AssessmentHelpers";
+} from "./assessmentHelpers";
 
 /* ─── SectionCard (local — only needed here and AssessmentSettings) ──
    Imported by both child components from their own copy, keeping each

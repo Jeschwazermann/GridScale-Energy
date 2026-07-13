@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Plus, UserPlus, ChevronDown } from "lucide-react";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../contexts/useAuth";
-import { inp } from "./AssessmentHelpers";
+import { inp } from "./assessmentHelpers";
 
 /* ─── CustomerSelector ───────────────────────────────────────────
    Owns all customer-related state: the list fetch, the dropdown,

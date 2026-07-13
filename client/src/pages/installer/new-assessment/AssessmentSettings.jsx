@@ -6,7 +6,7 @@ import {
   inp,
   gridHoursLabel,
   genHoursLabel,
-} from "./AssessmentHelpers";
+} from "./assessmentHelpers";
 
 /* ─── Shared primitives ──────────────────────────────────────── */
 const SectionCard = ({
