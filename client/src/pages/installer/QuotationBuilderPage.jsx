@@ -128,7 +128,6 @@ function CurrencyInput({ value, onChange }) {
     onChange(stripped === "" ? 0 : parseFloat(stripped));
   };
 
-  // Derive display string directly from prop — no effect needed
   const display = value === 0 ? "" : Number(value).toLocaleString("en-NG");
 
   return (
@@ -236,10 +235,12 @@ const QuotationBuilderPage = () => {
   const [savingQuote, setSavingQuote] = useState(false);
   const [quoteSaved, setQuoteSaved] = useState(false);
 
-  /* ── useEffect stays — this one is correct: syncs React with
-     Supabase (an external system), not React state with React state ── */
+  /* ── Depends on user?.id not user — same fix as CustomerDetail.
+     Token refreshes create a new user object reference but the same
+     user.id string, so using user?.id prevents spurious re-fetches
+     every time Supabase rotates the JWT on tab focus. ── */
   useEffect(() => {
-    if (!user || !id) return;
+    if (!user?.id || !id) return;
     let cancelled = false;
 
     (async () => {
@@ -290,15 +291,14 @@ const QuotationBuilderPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [user, id]);
+  }, [user?.id, id]); // ← was [user, id]
 
   const selectedAssessment = assessments[selectedIdx] ?? null;
 
   const handleCatalogueAdd = (description) =>
     setLineItems((prev) => [...prev, emptyItem(description)]);
 
-  const handleAddCustom = () =>
-    setLineItems((prev) => [...prev, emptyItem()]);
+  const handleAddCustom = () => setLineItems((prev) => [...prev, emptyItem()]);
 
   const removeLineItem = (itemId) =>
     setLineItems((prev) => prev.filter((i) => i.id !== itemId));
@@ -329,10 +329,19 @@ const QuotationBuilderPage = () => {
     const d = description.toLowerCase();
     if (d.includes("inverter") || d.includes("ups"))
       return { Icon: Zap, color: "text-blue-400", bg: "bg-blue-50" };
-    if (d.includes("panel") || d.includes("solar") || d.includes("wp") || d.includes("pv"))
+    if (
+      d.includes("panel") ||
+      d.includes("solar") ||
+      d.includes("wp") ||
+      d.includes("pv")
+    )
       return { Icon: Sun, color: "text-amber-400", bg: "bg-amber-50" };
     if (d.includes("battery") || d.includes("batt") || d.includes("ah"))
-      return { Icon: BatteryCharging, color: "text-teal-500", bg: "bg-teal-50" };
+      return {
+        Icon: BatteryCharging,
+        color: "text-teal-500",
+        bg: "bg-teal-50",
+      };
     return { Icon: Wrench, color: "text-gray-400", bg: "bg-gray-100" };
   };
 
@@ -416,7 +425,9 @@ const QuotationBuilderPage = () => {
                 {customer.name}
               </h1>
               {customer.address && (
-                <p className="text-sm text-gray-400 mt-0.5">{customer.address}</p>
+                <p className="text-sm text-gray-400 mt-0.5">
+                  {customer.address}
+                </p>
               )}
             </div>
             <div className="flex flex-col items-end gap-1.5 shrink-0">
@@ -463,12 +474,15 @@ const QuotationBuilderPage = () => {
                 >
                   {assessments.map((a, i) => (
                     <option key={a.id} value={i}>
-                      Assessment {assessments.length - i} — {fmtDate(a.created_at)}
+                      Assessment {assessments.length - i} —{" "}
+                      {fmtDate(a.created_at)}
                     </option>
                   ))}
                 </select>
               ) : (
-                <p className="text-sm text-gray-500">No assessments available.</p>
+                <p className="text-sm text-gray-500">
+                  No assessments available.
+                </p>
               )}
             </div>
           </div>
@@ -486,7 +500,8 @@ const QuotationBuilderPage = () => {
                   System Components
                 </p>
                 <p className="text-xs text-gray-400 mb-5">
-                  Select components to add them to the quote. Tap again to add another unit.
+                  Select components to add them to the quote. Tap again to add
+                  another unit.
                 </p>
                 <ComponentCatalogue
                   lineItems={lineItems}
@@ -538,7 +553,11 @@ const QuotationBuilderPage = () => {
                           <div
                             className={`w-8 h-8 rounded-lg ${bg} items-center justify-center shrink-0 hidden md:flex`}
                           >
-                            <Icon size={14} className={color} strokeWidth={1.8} />
+                            <Icon
+                              size={14}
+                              className={color}
+                              strokeWidth={1.8}
+                            />
                           </div>
 
                           <input
@@ -546,7 +565,11 @@ const QuotationBuilderPage = () => {
                             placeholder="Component description"
                             value={item.description}
                             onChange={(e) =>
-                              updateLineItem(item.id, "description", e.target.value)
+                              updateLineItem(
+                                item.id,
+                                "description",
+                                e.target.value,
+                              )
                             }
                             className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition bg-white"
                           />
@@ -556,7 +579,11 @@ const QuotationBuilderPage = () => {
                             min="1"
                             value={item.quantity}
                             onChange={(e) =>
-                              updateLineItem(item.id, "quantity", e.target.value)
+                              updateLineItem(
+                                item.id,
+                                "quantity",
+                                e.target.value,
+                              )
                             }
                             className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-800 text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition bg-white"
                           />

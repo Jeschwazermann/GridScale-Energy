@@ -29,7 +29,7 @@ export const submitLead = async (req, res, next) => {
         state: state || null,
         lga: lga || null,
         calculator_result: calculatorResult || null,
-        calculator_inputs: calculatorInputs || null, // ← store inputs too
+        calculator_inputs: calculatorInputs || null,
         status: "new",
       })
       .select()
@@ -73,7 +73,7 @@ export const claimLead = async (req, res, next) => {
       .eq("id", req.params.id)
       .maybeSingle();
 
-    console.log("Lead read result:", { lead, leadError, userId: req.user.id });
+    //console.log("Lead read result:", { lead, leadError, userId: req.user.id });
 
     if (leadError) throw leadError;
     if (!lead) return next(new AppError("Lead not found.", 404));

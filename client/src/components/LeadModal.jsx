@@ -88,12 +88,12 @@ export default function LeadModal({
 
     setLoading(true);
 
-    console.log("Submitting lead with inputs:", {
-      hasResult: !!calculatorResult,
-      hasInputs: !!calculatorInputs,
-      inputKeys: calculatorInputs ? Object.keys(calculatorInputs) : null,
-      appliances: calculatorInputs?.appliances?.length ?? 0,
-    });
+    // console.log("Submitting lead with inputs:", {
+    //   hasResult: !!calculatorResult,
+    //   hasInputs: !!calculatorInputs,
+    //   inputKeys: calculatorInputs ? Object.keys(calculatorInputs) : null,
+    //   appliances: calculatorInputs?.appliances?.length ?? 0,
+    // });
 
     try {
       await api.post("/api/leads", {

@@ -90,6 +90,9 @@ export default function CustomerDetail() {
   const [sizingLoading, setSizingLoading] = useState(false);
   const [sizingError, setSizingError] = useState(null);
 
+  /* ✅ NEW: track last fetched index safely */
+  const [lastSizedIdx, setLastSizedIdx] = useState(null);
+
   /* Status update */
   const [statusUpdating, setStatusUpdating] = useState(false);
 
@@ -130,9 +133,11 @@ export default function CustomerDetail() {
       );
       setAssessments(sorted);
       setSelectedIdx(0);
+
+      /* ✅ reset sizing state cleanly */
       setSizing(null);
       setSizingError(null);
-      sizedAssessmentIdxRef.current = null;
+      setLastSizedIdx(null);
 
       setLoading(false);
     })();
@@ -149,27 +154,35 @@ export default function CustomerDetail() {
   const lifespan = selectedAssessment?.settings?.lifespan ?? 25;
   const effectiveDailyKWh = assessmentResult?.energy?.effectiveDailyKWh ?? null;
 
-  /* ── Load sizing when the tab opens ── */
+  /* ── Load sizing (SAFE VERSION) ── */
   const sizingFetchIdRef = useRef(0);
-  const sizedAssessmentIdxRef = useRef(null);
 
   useEffect(() => {
-    if (activeTab !== "sizing" || !effectiveDailyKWh) return;
-    if (sizedAssessmentIdxRef.current === selectedIdx) return;
+    if (activeTab !== "sizing") return;
+    if (!effectiveDailyKWh) return;
 
-    sizedAssessmentIdxRef.current = selectedIdx;
+    /* ✅ prevent duplicate fetch */
+    if (lastSizedIdx === selectedIdx) return;
+
     let cancelled = false;
     const fetchId = ++sizingFetchIdRef.current;
 
     (async () => {
       setSizingLoading(true);
       setSizingError(null);
+
       try {
         const { data } = await fetchSizing(effectiveDailyKWh);
+
         if (cancelled || fetchId !== sizingFetchIdRef.current) return;
+
         setSizing(data);
+
+        /* ✅ update AFTER success */
+        setLastSizedIdx(selectedIdx);
       } catch (err) {
         if (cancelled || fetchId !== sizingFetchIdRef.current) return;
+
         setSizingError(
           err?.response?.data?.error || "Sizing calculation failed.",
         );
@@ -183,7 +196,7 @@ export default function CustomerDetail() {
     return () => {
       cancelled = true;
     };
-  }, [activeTab, selectedIdx, effectiveDailyKWh]);
+  }, [activeTab, selectedIdx, effectiveDailyKWh, lastSizedIdx]);
 
   /* ── Update status ── */
   const updateStatus = async (newStatus) => {
