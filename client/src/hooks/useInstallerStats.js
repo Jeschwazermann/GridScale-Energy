@@ -22,6 +22,7 @@ export function useInstallerStats() {
         assessmentsRes,
         quotationsRes,
         leadsCountRes,
+        activePipelineRes,
         recentCustomersRes,
         newLeadsRes,
       ] = await Promise.all([
@@ -48,6 +49,12 @@ export function useInstallerStats() {
 
         supabase
           .from("customers")
+          .select("id", { count: "exact", head: true })
+          .eq("installer_id", user.id)
+          .in("status", ["quoted", "follow_up"]),
+
+        supabase
+          .from("customers")
           .select("*, assessments(results, created_at)")
           .eq("installer_id", user.id)
           .order("created_at", { ascending: false })
@@ -71,6 +78,7 @@ export function useInstallerStats() {
         totalSavings,
         quotationsSent: quotationsRes.count ?? 0,
         newLeadsCount: leadsCountRes.count ?? 0,
+        activePipeline: activePipelineRes.count ?? 0,
       });
 
       setRecentCustomers(recentCustomersRes.data ?? []);

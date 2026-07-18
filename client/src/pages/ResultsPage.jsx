@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ArrowLeft, RefreshCw } from "lucide-react";
+import { trackEvent } from "../lib/analytics";
 import ResultCard from "../components/ResultCard";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
@@ -20,6 +21,16 @@ export default function ResultsPage() {
       navigate("/calculator", { replace: true });
     }
   }, [state, navigate]);
+
+  // Fire the funnel event once we've confirmed there's a real result to show
+  useEffect(() => {
+    if (state?.result) {
+      trackEvent("calculator_completed", {
+        savings_per_year: state.result?.comparison?.savingsPerYear ?? null,
+        cheapest_source: state.result?.comparison?.cheapestSource ?? null,
+      });
+    }
+  }, [state]);
 
   if (!state?.result) return null;
 

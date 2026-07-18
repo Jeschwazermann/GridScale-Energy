@@ -11,6 +11,7 @@ export const submitLead = async (req, res, next) => {
       email,
       state,
       lga,
+      address,
       calculatorResult,
       calculatorInputs,
     } = req.body;
@@ -28,6 +29,7 @@ export const submitLead = async (req, res, next) => {
         email: email || null,
         state: state || null,
         lga: lga || null,
+        address: address || null,
         calculator_result: calculatorResult || null,
         calculator_inputs: calculatorInputs || null,
         status: "new",
@@ -146,6 +148,7 @@ export const convertLead = async (req, res, next) => {
         email: lead.email ?? null,
         state: lead.state ?? null,
         lga: lead.lga ?? null,
+        address: lead.address ?? null,
         status: "new",
         notes: "Created from calculator lead",
       })

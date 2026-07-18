@@ -17,11 +17,16 @@ import {
   BatteryCharging,
   Wrench,
   Check,
+  Sparkles,
 } from "lucide-react";
 import InstallerLayout from "../../layouts/installer";
 import { useAuth } from "../../contexts/useAuth";
 import { supabase } from "../../lib/supabase";
-import { createQuotation, updateQuotation } from "../../services/installerApi";
+import {
+  createQuotation,
+  updateQuotation,
+  fetchSizing,
+} from "../../services/installerApi";
 
 const VAT_RATE = 0.075;
 
@@ -121,6 +126,12 @@ const emptyItem = (description = "") => ({
   unitPrice: 0,
 });
 
+/* ─── Panel wattage parsing ──────────────────────────────────── */
+const parsePanelWattage = (description = "") => {
+  const match = description.match(/(\d+)\s*Wp/i);
+  return match ? parseInt(match[1], 10) : null;
+};
+
 /* ─── CurrencyInput — fully controlled, no local state ──────── */
 function CurrencyInput({ value, onChange }) {
   const handleChange = (e) => {
@@ -156,7 +167,7 @@ function ComponentCatalogue({ lineItems, onAdd, onAddCustom }) {
           <div key={category}>
             <div className="flex items-center gap-2 mb-2.5">
               <div
-                className={`w-6 h-6 rounded-lg ${bg} flex items-center justify-center`}
+                className={`w-6 h-6 rounded-lg ${bg} flex items-center justify-center shrink-0`}
               >
                 <Icon size={13} className={color} strokeWidth={2} />
               </div>
@@ -165,6 +176,7 @@ function ComponentCatalogue({ lineItems, onAdd, onAddCustom }) {
               </p>
             </div>
 
+            {/* FIX: chips wrap naturally; long labels break at word boundary */}
             <div className="flex flex-wrap gap-2">
               {items.map(({ description }) => {
                 const existingCount = lineItems.filter(
@@ -177,8 +189,9 @@ function ComponentCatalogue({ lineItems, onAdd, onAddCustom }) {
                     key={description}
                     onClick={() => onAdd(description)}
                     className={`
-                      inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold
-                      transition-all duration-150
+                      inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border
+                      text-xs font-semibold transition-all duration-150
+                      max-w-full text-left break-words
                       ${
                         isAdded
                           ? `${activeBg} ${border} ${color}`
@@ -187,13 +200,15 @@ function ComponentCatalogue({ lineItems, onAdd, onAddCustom }) {
                     `}
                   >
                     {isAdded ? (
-                      <Check size={11} strokeWidth={2.5} />
+                      <Check size={11} strokeWidth={2.5} className="shrink-0" />
                     ) : (
-                      <Plus size={11} strokeWidth={2.5} />
+                      <Plus size={11} strokeWidth={2.5} className="shrink-0" />
                     )}
-                    {description}
+                    <span>{description}</span>
                     {isAdded && existingCount > 1 && (
-                      <span className="ml-0.5 font-bold">×{existingCount}</span>
+                      <span className="ml-0.5 font-bold shrink-0">
+                        ×{existingCount}
+                      </span>
                     )}
                   </button>
                 );
@@ -229,16 +244,16 @@ const QuotationBuilderPage = () => {
   const [error, setError] = useState(null);
 
   const [quotation, setQuotation] = useState(null);
+  const [prefilled, setPrefilled] = useState(false);
+  const [manuallyEdited, setManuallyEdited] = useState(false);
   const [lineItems, setLineItems] = useState([]);
   const [notes, setNotes] = useState("");
   const [validityDate, setValidityDate] = useState("");
   const [savingQuote, setSavingQuote] = useState(false);
   const [quoteSaved, setQuoteSaved] = useState(false);
 
-  /* ── Depends on user?.id not user — same fix as CustomerDetail.
-     Token refreshes create a new user object reference but the same
-     user.id string, so using user?.id prevents spurious re-fetches
-     every time Supabase rotates the JWT on tab focus. ── */
+  const [sizing, setSizing] = useState(null);
+
   useEffect(() => {
     if (!user?.id || !id) return;
     let cancelled = false;
@@ -291,22 +306,134 @@ const QuotationBuilderPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [user?.id, id]); // ← was [user, id]
+  }, [user?.id, id]);
 
   const selectedAssessment = assessments[selectedIdx] ?? null;
 
-  const handleCatalogueAdd = (description) =>
+  const frozenSizing = selectedAssessment?.sizing_result ?? null;
+  const displaySizing = frozenSizing ?? sizing;
+
+  useEffect(() => {
+    if (!selectedAssessment) return;
+    if (frozenSizing) return;
+
+    const assessmentResult =
+      selectedAssessment.result ?? selectedAssessment.results ?? null;
+    const effectiveDailyKWh =
+      assessmentResult?.energy?.effectiveDailyKWh ?? null;
+
+    if (!effectiveDailyKWh) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const { data } = await fetchSizing(effectiveDailyKWh, {
+          address: customer?.address,
+          lga: customer?.lga,
+          state: customer?.state,
+        });
+
+        if (cancelled) return;
+        setSizing(data);
+
+        const { error: persistErr } = await supabase
+          .from("assessments")
+          .update({ sizing_result: data })
+          .eq("id", selectedAssessment.id);
+
+        if (!persistErr) {
+          setAssessments((prev) =>
+            prev.map((a) =>
+              a.id === selectedAssessment.id
+                ? { ...a, sizing_result: data }
+                : a,
+            ),
+          );
+        }
+      } catch {
+        // Non-blocking — builder stays fully manual if sizing unavailable.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    selectedAssessment,
+    frozenSizing,
+    customer?.address,
+    customer?.lga,
+    customer?.state,
+  ]);
+
+  const handleCatalogueAdd = (description) => {
+    setManuallyEdited(true);
+    setPrefilled(false);
+    const wattage = parsePanelWattage(description);
+    const hasExistingPanelItem = lineItems.some(
+      (i) => parsePanelWattage(i.description) !== null,
+    );
+    if (wattage && !hasExistingPanelItem && displaySizing?.panels?.totalKwp) {
+      const smartQty = Math.ceil(
+        (displaySizing.panels.totalKwp * 1000) / wattage,
+      );
+      setLineItems((prev) => [
+        ...prev,
+        { ...emptyItem(description), quantity: smartQty },
+      ]);
+      return;
+    }
     setLineItems((prev) => [...prev, emptyItem(description)]);
+  };
 
-  const handleAddCustom = () => setLineItems((prev) => [...prev, emptyItem()]);
+  const handleAddCustom = () => {
+    setManuallyEdited(true);
+    setPrefilled(false);
+    setLineItems((prev) => [...prev, emptyItem()]);
+  };
 
-  const removeLineItem = (itemId) =>
+  const removeLineItem = (itemId) => {
+    setManuallyEdited(true);
+    setPrefilled(false);
     setLineItems((prev) => prev.filter((i) => i.id !== itemId));
+  };
 
-  const updateLineItem = (itemId, field, value) =>
+  const updateLineItem = (itemId, field, value) => {
+    setManuallyEdited(true);
+    setPrefilled(false);
     setLineItems((prev) =>
       prev.map((i) => (i.id === itemId ? { ...i, [field]: value } : i)),
     );
+  };
+
+  const handlePrefillFromSizing = () => {
+    if (!displaySizing) return;
+
+    if (prefilled) {
+      setLineItems([]);
+      setPrefilled(false);
+      return;
+    }
+
+    const inverterSize =
+      displaySizing?.inverter?.sizeKva ?? displaySizing?.inverter?.size ?? 1;
+    const panelWattage = displaySizing?.panels?.unitWp ?? 400;
+    const panelCount = displaySizing?.panels?.count ?? 1;
+    const batteryUnits = displaySizing?.battery?.units ?? 1;
+
+    setLineItems([
+      emptyItem(`${inverterSize}kVA Inverter`),
+      { ...emptyItem(`${panelWattage}Wp Solar Panel`), quantity: panelCount },
+      {
+        ...emptyItem("100Ah/48V Lithium (LiFePO4) Battery"),
+        quantity: batteryUnits,
+      },
+      emptyItem("Installation & Labour"),
+    ]);
+    setPrefilled(true);
+    setManuallyEdited(false);
+  };
 
   const subtotal = useMemo(
     () =>
@@ -353,6 +480,7 @@ const QuotationBuilderPage = () => {
         assessmentId: selectedAssessment.id,
         lineItems,
         notes,
+        paymentTerms: notes,
         validityDate: validityDate || null,
       };
       let saved;
@@ -430,7 +558,8 @@ const QuotationBuilderPage = () => {
                 </p>
               )}
             </div>
-            <div className="flex flex-col items-end gap-1.5 shrink-0">
+            {/* FIX: on mobile align left, on md align right */}
+            <div className="flex flex-row md:flex-col md:items-end items-center gap-3 md:gap-1.5 shrink-0 flex-wrap">
               <div className="flex items-center gap-2">
                 <span
                   className={`text-xs font-bold px-2.5 py-1 rounded-full ${
@@ -461,16 +590,16 @@ const QuotationBuilderPage = () => {
 
         {/* ── Main builder ── */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="px-4 sm:px-6 py-4 border-b border-gray-100 bg-gray-50 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 shrink-0">
                 Based on
               </p>
               {assessments.length > 0 ? (
                 <select
                   value={selectedIdx}
                   onChange={(e) => setSelectedIdx(Number(e.target.value))}
-                  className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
+                  className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white w-full sm:w-auto"
                 >
                   {assessments.map((a, i) => (
                     <option key={a.id} value={i}>
@@ -488,14 +617,72 @@ const QuotationBuilderPage = () => {
           </div>
 
           {!selectedAssessment ? (
-            <div className="mx-6 my-6 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-5 py-10 text-center text-sm text-gray-500">
+            <div className="mx-4 sm:mx-6 my-6 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-5 py-10 text-center text-sm text-gray-500">
               <FileText size={32} className="mx-auto mb-3 text-gray-300" />
               <p>Run an assessment to enable the quotation builder.</p>
             </div>
           ) : (
             <div>
               {/* Section 1: Catalogue */}
-              <div className="px-6 pt-6 pb-6 border-b border-gray-100">
+              <div className="px-4 sm:px-6 pt-6 pb-6 border-b border-gray-100">
+                {/* Pre-fill banner — shown when sizing available and not yet manually locked */}
+                {displaySizing && !manuallyEdited && (
+                  <div
+                    className={`mb-5 rounded-xl border px-4 py-3.5 flex flex-col sm:flex-row sm:items-center gap-3 transition-colors ${
+                      prefilled
+                        ? "bg-teal-50 border-teal-200"
+                        : "bg-amber-50 border-amber-200"
+                    }`}
+                  >
+                    <div className="flex items-start gap-3 min-w-0 flex-1">
+                      <div
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                          prefilled ? "bg-teal-100" : "bg-amber-100"
+                        }`}
+                      >
+                        <Sparkles
+                          size={14}
+                          className={
+                            prefilled ? "text-teal-600" : "text-amber-600"
+                          }
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <p
+                          className={`text-xs font-bold ${
+                            prefilled ? "text-teal-700" : "text-amber-700"
+                          }`}
+                        >
+                          {prefilled
+                            ? "Pre-filled from sizing recommendation"
+                            : "Sizing recommendation available"}
+                        </p>
+                        {/* FIX: removed truncate — let it wrap on small screens */}
+                        <p
+                          className={`text-xs mt-0.5 leading-relaxed ${
+                            prefilled ? "text-teal-600" : "text-amber-600"
+                          }`}
+                        >
+                          {prefilled
+                            ? `${displaySizing?.inverter?.sizeKva}kVA inverter · ${displaySizing?.panels?.count} × ${displaySizing?.panels?.unitWp ?? 400}Wp panels · ${displaySizing?.battery?.units} battery units — adjust quantities and enter prices below`
+                            : `${displaySizing?.inverter?.sizeKva}kVA inverter · ${displaySizing?.panels?.count} panels · ${displaySizing?.battery?.units} battery units`}
+                        </p>
+                      </div>
+                    </div>
+                    {/* FIX: button full-width on mobile, auto on sm+ */}
+                    <button
+                      onClick={handlePrefillFromSizing}
+                      className={`w-full sm:w-auto shrink-0 text-xs font-bold px-4 py-2.5 sm:py-2 rounded-lg transition-colors ${
+                        prefilled
+                          ? "bg-teal-100 hover:bg-teal-200 text-teal-700"
+                          : "bg-amber-100 hover:bg-amber-200 text-amber-700"
+                      }`}
+                    >
+                      {prefilled ? "Undo pre-fill" : "Pre-fill quote →"}
+                    </button>
+                  </div>
+                )}
+
                 <p className="text-xs font-bold uppercase tracking-[0.15em] text-gray-400 mb-1">
                   System Components
                 </p>
@@ -512,11 +699,12 @@ const QuotationBuilderPage = () => {
 
               {/* Section 2: Line items */}
               {lineItems.length > 0 && (
-                <div className="px-6 pt-5 pb-2 border-b border-gray-100">
+                <div className="px-4 sm:px-6 pt-5 pb-2 border-b border-gray-100">
                   <p className="text-xs font-bold uppercase tracking-[0.15em] text-gray-400 mb-4">
                     Quote Items — Enter Prices
                   </p>
 
+                  {/* Desktop column headers — hidden on mobile */}
                   <div className="hidden md:grid grid-cols-[auto_3fr_80px_160px_140px_36px] gap-3 mb-2 px-1">
                     {[
                       { label: "" },
@@ -535,7 +723,7 @@ const QuotationBuilderPage = () => {
                     ))}
                   </div>
 
-                  <div className="space-y-1.5 mb-4">
+                  <div className="space-y-3 mb-4">
                     {lineItems.map((item, idx) => {
                       const rowTotal =
                         (parseFloat(item.quantity) || 0) *
@@ -546,71 +734,162 @@ const QuotationBuilderPage = () => {
                       return (
                         <div
                           key={item.id}
-                          className={`grid grid-cols-1 md:grid-cols-[auto_3fr_80px_160px_140px_36px] gap-2 items-center rounded-xl px-1 py-1.5 ${
-                            isEven ? "bg-gray-50/60" : "bg-white"
+                          className={`rounded-xl px-3 py-3 ${
+                            isEven
+                              ? "bg-gray-50/60"
+                              : "bg-white border border-gray-100"
                           }`}
                         >
-                          <div
-                            className={`w-8 h-8 rounded-lg ${bg} items-center justify-center shrink-0 hidden md:flex`}
-                          >
-                            <Icon
-                              size={14}
-                              className={color}
-                              strokeWidth={1.8}
-                            />
+                          {/* ── Mobile layout ── */}
+                          <div className="md:hidden space-y-2">
+                            {/* Row 1: icon + description + delete */}
+                            <div className="flex items-center gap-2">
+                              <div
+                                className={`w-8 h-8 rounded-lg ${bg} flex items-center justify-center shrink-0`}
+                              >
+                                <Icon
+                                  size={14}
+                                  className={color}
+                                  strokeWidth={1.8}
+                                />
+                              </div>
+                              <input
+                                type="text"
+                                placeholder="Component description"
+                                value={item.description}
+                                onChange={(e) =>
+                                  updateLineItem(
+                                    item.id,
+                                    "description",
+                                    e.target.value,
+                                  )
+                                }
+                                className="flex-1 min-w-0 border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition bg-white"
+                              />
+                              <button
+                                onClick={() => removeLineItem(item.id)}
+                                className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-all shrink-0"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+
+                            {/* Row 2: qty label + input | price label + input */}
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">
+                                  Qty
+                                </p>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={item.quantity}
+                                  onChange={(e) =>
+                                    updateLineItem(
+                                      item.id,
+                                      "quantity",
+                                      e.target.value,
+                                    )
+                                  }
+                                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-800 text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition bg-white"
+                                />
+                              </div>
+                              <div>
+                                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">
+                                  Unit Price
+                                </p>
+                                <CurrencyInput
+                                  value={item.unitPrice}
+                                  onChange={(val) =>
+                                    updateLineItem(item.id, "unitPrice", val)
+                                  }
+                                />
+                              </div>
+                            </div>
+
+                            {/* Row 3: line total */}
+                            <div className="flex items-center justify-end pt-1 border-t border-gray-100">
+                              <span className="text-xs text-gray-400 mr-2">
+                                Total
+                              </span>
+                              <span
+                                className={`text-sm font-bold tabular-nums ${
+                                  rowTotal > 0
+                                    ? "text-gray-800"
+                                    : "text-gray-300"
+                                }`}
+                              >
+                                {rowTotal > 0 ? fmtNaira(rowTotal) : "—"}
+                              </span>
+                            </div>
                           </div>
 
-                          <input
-                            type="text"
-                            placeholder="Component description"
-                            value={item.description}
-                            onChange={(e) =>
-                              updateLineItem(
-                                item.id,
-                                "description",
-                                e.target.value,
-                              )
-                            }
-                            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition bg-white"
-                          />
-
-                          <input
-                            type="number"
-                            min="1"
-                            value={item.quantity}
-                            onChange={(e) =>
-                              updateLineItem(
-                                item.id,
-                                "quantity",
-                                e.target.value,
-                              )
-                            }
-                            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-800 text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition bg-white"
-                          />
-
-                          <CurrencyInput
-                            value={item.unitPrice}
-                            onChange={(val) =>
-                              updateLineItem(item.id, "unitPrice", val)
-                            }
-                          />
-
-                          <div className="flex items-center justify-end px-2">
-                            <span
-                              className={`text-sm font-bold tabular-nums ${
-                                rowTotal > 0 ? "text-gray-800" : "text-gray-300"
-                              }`}
+                          {/* ── Desktop layout ── */}
+                          <div className="hidden md:grid grid-cols-[auto_3fr_80px_160px_140px_36px] gap-2 items-center">
+                            <div
+                              className={`w-8 h-8 rounded-lg ${bg} flex items-center justify-center shrink-0`}
                             >
-                              {rowTotal > 0 ? fmtNaira(rowTotal) : "—"}
-                            </span>
-                          </div>
+                              <Icon
+                                size={14}
+                                className={color}
+                                strokeWidth={1.8}
+                              />
+                            </div>
 
-                          <button
-                            onClick={() => removeLineItem(item.id)}
-                            className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-all"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                            <input
+                              type="text"
+                              placeholder="Component description"
+                              value={item.description}
+                              onChange={(e) =>
+                                updateLineItem(
+                                  item.id,
+                                  "description",
+                                  e.target.value,
+                                )
+                              }
+                              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition bg-white"
+                            />
+
+                            <input
+                              type="number"
+                              min="1"
+                              value={item.quantity}
+                              onChange={(e) =>
+                                updateLineItem(
+                                  item.id,
+                                  "quantity",
+                                  e.target.value,
+                                )
+                              }
+                              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-800 text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition bg-white"
+                            />
+
+                            <CurrencyInput
+                              value={item.unitPrice}
+                              onChange={(val) =>
+                                updateLineItem(item.id, "unitPrice", val)
+                              }
+                            />
+
+                            <div className="flex items-center justify-end px-2">
+                              <span
+                                className={`text-sm font-bold tabular-nums ${
+                                  rowTotal > 0
+                                    ? "text-gray-800"
+                                    : "text-gray-300"
+                                }`}
+                              >
+                                {rowTotal > 0 ? fmtNaira(rowTotal) : "—"}
+                              </span>
+                            </div>
+
+                            <button
+                              onClick={() => removeLineItem(item.id)}
+                              className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-all"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
                         </div>
                       );
                     })}
@@ -619,11 +898,12 @@ const QuotationBuilderPage = () => {
               )}
 
               {/* Section 3: Pricing Breakdown */}
-              <div className="border-b border-gray-100 px-6 py-5 bg-gray-50/50">
+              <div className="border-b border-gray-100 px-4 sm:px-6 py-5 bg-gray-50/50">
                 <p className="text-xs font-bold uppercase tracking-[0.15em] text-gray-400 mb-4">
                   Pricing Breakdown
                 </p>
-                <div className="max-w-sm ml-auto space-y-2.5">
+                {/* FIX: full width on mobile, max-w-sm right-aligned on md+ */}
+                <div className="w-full md:max-w-sm md:ml-auto space-y-2.5">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-gray-500">Subtotal</span>
                     <span className="text-sm font-semibold text-gray-700 tabular-nums">
@@ -663,11 +943,11 @@ const QuotationBuilderPage = () => {
               </div>
 
               {/* Section 4: Payment & Validity */}
-              <div className="border-b border-gray-100 px-6 py-5">
+              <div className="border-b border-gray-100 px-4 sm:px-6 py-5">
                 <p className="text-xs font-bold uppercase tracking-[0.15em] text-gray-400 mb-4">
                   Payment &amp; Validity
                 </p>
-                <div className="grid md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
                       Valid Until
@@ -699,12 +979,12 @@ const QuotationBuilderPage = () => {
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="px-6 py-4 bg-gray-50 flex items-center gap-3">
+              {/* Actions — FIX: stack on mobile, row on sm+ */}
+              <div className="px-4 sm:px-6 py-4 bg-gray-50 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
                 <button
                   onClick={saveQuotation}
                   disabled={savingQuote || lineItems.length === 0}
-                  className="inline-flex items-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-semibold text-sm px-5 py-2.5 rounded-xl transition-all shadow-sm"
+                  className="inline-flex items-center justify-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-semibold text-sm px-5 py-3 sm:py-2.5 rounded-xl transition-all shadow-sm"
                 >
                   {savingQuote ? (
                     <Loader size={15} className="animate-spin" />
@@ -716,7 +996,7 @@ const QuotationBuilderPage = () => {
 
                 <button
                   disabled
-                  className="inline-flex items-center gap-2 border border-gray-200 text-gray-400 font-semibold text-sm px-5 py-2.5 rounded-xl cursor-not-allowed bg-white"
+                  className="inline-flex items-center justify-center gap-2 border border-gray-200 text-gray-400 font-semibold text-sm px-5 py-3 sm:py-2.5 rounded-xl cursor-not-allowed bg-white"
                   title="Coming soon"
                 >
                   <Download size={15} />

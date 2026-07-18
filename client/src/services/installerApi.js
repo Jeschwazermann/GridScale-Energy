@@ -24,8 +24,16 @@ export const fetchAssessment = (id) =>
   api.get(`/api/installer/assessments/${id}`);
 
 /* ── Sizing ── */
-export const fetchSizing = (effectiveDailyKWh) =>
-  api.post("/api/installer/sizing", { effectiveDailyKWh });
+// export const fetchSizing = (effectiveDailyKWh) =>
+//   api.post("/api/installer/sizing", { effectiveDailyKWh });
+/* ── Sizing ── */
+export const fetchSizing = (effectiveDailyKWh, location = {}) =>
+  api.post("/api/installer/sizing", {
+    effectiveDailyKWh,
+    address: location.address,
+    lga: location.lga,
+    state: location.state,
+  });
 
 /* ── Quotations ── */
 export const createQuotation = (payload) =>

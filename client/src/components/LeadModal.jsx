@@ -9,53 +9,22 @@ import {
   Loader,
 } from "lucide-react";
 import axios from "axios";
+import { NIGERIA_STATES, NIGERIA_LGAS } from "../constants/nigerianData";
+import { trackEvent } from "../lib/analytics";
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
 });
 
-const NIGERIAN_STATES = [
-  "Abia",
-  "Adamawa",
-  "Akwa Ibom",
-  "Anambra",
-  "Bauchi",
-  "Bayelsa",
-  "Benue",
-  "Borno",
-  "Cross River",
-  "Delta",
-  "Ebonyi",
-  "Edo",
-  "Ekiti",
-  "Enugu",
-  "FCT - Abuja",
-  "Gombe",
-  "Imo",
-  "Jigawa",
-  "Kaduna",
-  "Kano",
-  "Katsina",
-  "Kebbi",
-  "Kogi",
-  "Kwara",
-  "Lagos",
-  "Nasarawa",
-  "Niger",
-  "Ogun",
-  "Ondo",
-  "Osun",
-  "Oyo",
-  "Plateau",
-  "Rivers",
-  "Sokoto",
-  "Taraba",
-  "Yobe",
-  "Zamfara",
-];
-
 const inp =
   "w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition";
+
+function formatCompactNaira(value) {
+  if (value == null || Number.isNaN(value)) return "0";
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K`;
+  return `${value}`;
+}
 
 export default function LeadModal({
   onClose,
@@ -67,6 +36,8 @@ export default function LeadModal({
     phone: "",
     email: "",
     state: "",
+    lga: "",
+    address: "",
   });
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -74,15 +45,19 @@ export default function LeadModal({
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+    setForm((prev) => ({
+      ...prev,
+      [name]: value,
+      ...(name === "state" ? { lga: "" } : {}),
+    }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
 
-    if (!form.name.trim() || !form.phone.trim()) {
-      setError("Your name and phone number are required.");
+    if (!form.name.trim() || !form.phone.trim() || !form.state) {
+      setError("Name, phone number, and state are required.");
       return;
     }
 
@@ -101,9 +76,18 @@ export default function LeadModal({
         phone: form.phone.trim(),
         email: form.email.trim() || null,
         state: form.state || null,
+        address: form.address.trim() || null,
+        LGA: form.lga || null,
         calculatorResult: calculatorResult ?? null,
         calculatorInputs: calculatorInputs ?? null,
       });
+
+      trackEvent("lead_submitted", {
+        state: form.state || null,
+        has_address: Boolean(form.address.trim()),
+        savings_per_year: calculatorResult?.comparison?.savingsPerYear ?? null,
+      });
+
       setSuccess(true);
     } catch (err) {
       setError(
@@ -150,18 +134,27 @@ export default function LeadModal({
               <CheckCircle size={28} className="text-teal-600" />
             </div>
             <h3 className="font-display font-bold text-xl text-gray-900 mb-2">
-              Request submitted!
+              ⚡ You're one step closer to reliable power
             </h3>
-            <p className="text-gray-500 text-sm leading-relaxed mb-6">
-              A solar installer will reach out to{" "}
-              <strong className="text-gray-700">{form.name}</strong> on{" "}
+            <p className="text-gray-500 text-sm leading-relaxed mb-3">
+              Your request has been sent to a verified solar installer. They'll
+              contact <strong className="text-gray-700">{form.name}</strong> on{" "}
               <strong className="text-gray-700">{form.phone}</strong> shortly.
             </p>
+            <div className="flex flex-col items-center gap-1 mb-6 text-xs text-gray-400">
+              <span>
+                ✔ Free consultation &nbsp;·&nbsp; ✔ No obligation &nbsp;·&nbsp;
+                ✔ No spam
+              </span>
+              <span className="text-teal-500 font-medium">
+                💡 No pressure. Just clear, honest recommendations.
+              </span>
+            </div>
             <button
               onClick={onClose}
               className="bg-teal-600 hover:bg-teal-700 text-white font-semibold px-6 py-2.5 rounded-xl transition-all text-sm"
             >
-              Done
+              Got it
             </button>
           </div>
         ) : (
@@ -222,22 +215,67 @@ export default function LeadModal({
               <label className="flex text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 items-center gap-1.5">
                 <MapPin size={11} className="text-gray-400" /> State{" "}
                 <span className="text-gray-300 font-normal normal-case tracking-normal">
-                  (optional)
+                  (required for installer matching)
                 </span>
               </label>
               <select
                 name="state"
                 value={form.state}
                 onChange={handleChange}
+                required
                 className={`${inp} appearance-none`}
               >
                 <option value="">Select your state…</option>
-                {NIGERIAN_STATES.map((s) => (
+                {NIGERIA_STATES.map((s) => (
                   <option key={s} value={s}>
                     {s}
                   </option>
                 ))}
               </select>
+            </div>
+            {/* LGA */}
+            <div>
+              <label className="flex text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 items-center gap-1.5">
+                <MapPin size={11} className="text-gray-400" /> LGA{" "}
+                <span className="text-gray-300 font-normal normal-case tracking-normal">
+                  (optional)
+                </span>
+              </label>
+              <select
+                name="lga"
+                value={form.lga}
+                onChange={handleChange}
+                disabled={!form.state}
+                className={`${inp} appearance-none disabled:bg-gray-50 disabled:text-gray-300`}
+              >
+                <option value="">
+                  {form.state ? "Select LGA…" : "Select a state first"}
+                </option>
+                {(NIGERIA_LGAS[form.state] ?? []).map((l) => (
+                  <option key={l} value={l}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Address */}
+            <div>
+              <label className="flex text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 items-center gap-1.5">
+                <MapPin size={11} className="text-gray-400" /> Address / Nearest
+                Landmark{" "}
+                <span className="text-gray-300 font-normal normal-case tracking-normal">
+                  (optional — helps size your system more accurately)
+                </span>
+              </label>
+              <input
+                type="text"
+                name="address"
+                placeholder="e.g. 12 Admiralty Way, Lekki Phase 1"
+                value={form.address}
+                onChange={handleChange}
+                className={inp}
+              />
             </div>
 
             {/* Savings snapshot — shown if available */}
@@ -246,10 +284,10 @@ export default function LeadModal({
                 ☀️ Your assessment shows potential savings of{" "}
                 <strong>
                   ₦
-                  {(calculatorResult.comparison.savingsPerYear / 1000).toFixed(
-                    0,
+                  {formatCompactNaira(
+                    calculatorResult.comparison.savingsPerYear,
                   )}
-                  K/yr
+                  /yr
                 </strong>{" "}
                 — this will be shared with the installer automatically.
               </div>

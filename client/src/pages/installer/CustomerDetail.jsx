@@ -10,6 +10,8 @@ import {
   ClipboardList,
   ChevronDown,
   Plus,
+  Pencil,
+  X,
   AlertCircle,
   Loader,
 } from "lucide-react";
@@ -18,6 +20,7 @@ import ResultCard from "../../components/ResultCard";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/useAuth";
 import { fetchSizing } from "../../services/installerApi";
+import { NIGERIAN_STATES, NIGERIA_LGAS } from "../../constants/nigerianData";
 
 /* ─── Status config ──────────────────────────────────────────── */
 const STATUS_STYLES = {
@@ -35,6 +38,24 @@ const STATUSES = [
   { value: "converted", label: "Converted" },
   { value: "lost", label: "Lost" },
 ];
+
+const IRRADIANCE_SOURCE_STYLES = {
+  address: {
+    label: "Precise location data",
+    className: "bg-teal-500/20 text-teal-100 border border-teal-400/30",
+  },
+  lga: {
+    label: "Area-level estimate",
+    className: "bg-amber-400/20 text-amber-100 border border-amber-300/30",
+  },
+  fallback: {
+    label: "Regional average",
+    className: "bg-gray-400/20 text-gray-100 border border-gray-300/30",
+  },
+};
+
+const inp =
+  "w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition";
 
 /* ─── Formatters ─────────────────────────────────────────────── */
 const fmtDate = (d) =>
@@ -73,6 +94,231 @@ const TABS = [
   { id: "quotation", label: "Quotation", icon: FileText },
 ];
 
+/* ─── EditCustomerModal ──────────────────────────────────────────
+   Lets an installer correct/complete a customer's location data
+   after creation — closes the gap for both manually-created
+   customers (which never collected lga/address) and lead-converted
+   customers (whose consumer-submitted address may be vague/missing).
+──────────────────────────────────────────────────────────────── */
+function EditCustomerModal({ customer, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    name: customer.name ?? "",
+    phone: customer.phone ?? "",
+    email: customer.email ?? "",
+    state: customer.state ?? "",
+    lga: customer.lga ?? "",
+    address: customer.address ?? "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({
+      ...prev,
+      [name]: value,
+      /* Reset LGA when state changes — a stale LGA from a previously
+         selected state shouldn't silently persist under a new one. */
+      ...(name === "state" ? { lga: "" } : {}),
+    }));
+  };
+
+  const handleSave = async () => {
+    setError(null);
+
+    if (!form.name.trim() || !form.phone.trim() || !form.state) {
+      setError("Name, phone, and state are required.");
+      return;
+    }
+
+    setSaving(true);
+
+    const { data, error: err } = await supabase
+      .from("customers")
+      .update({
+        name: form.name.trim(),
+        phone: form.phone.trim(),
+        email: form.email.trim() || null,
+        state: form.state,
+        lga: form.lga || null,
+        address: form.address.trim() || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", customer.id)
+      .select()
+      .single();
+
+    setSaving(false);
+
+    if (err) {
+      setError(err.message || "Failed to save changes.");
+      return;
+    }
+
+    onSaved(data);
+    onClose();
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center px-4"
+      style={{ background: "rgba(0,0,0,0.5)" }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+          <h2 className="font-display font-bold text-gray-900 text-lg">
+            Edit Customer
+          </h2>
+          <button
+            onClick={onClose}
+            className="text-gray-300 hover:text-gray-500 transition-colors"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="px-6 py-6 space-y-4 max-h-[70vh] overflow-y-auto">
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+              Full Name *
+            </label>
+            <input
+              type="text"
+              name="name"
+              value={form.name}
+              onChange={handleChange}
+              className={inp}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+              Phone *
+            </label>
+            <input
+              type="tel"
+              name="phone"
+              value={form.phone}
+              onChange={handleChange}
+              className={inp}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+              Email{" "}
+              <span className="text-gray-300 font-normal normal-case tracking-normal">
+                (optional)
+              </span>
+            </label>
+            <input
+              type="email"
+              name="email"
+              value={form.email}
+              onChange={handleChange}
+              className={inp}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                State *
+              </label>
+              <select
+                name="state"
+                value={form.state}
+                onChange={handleChange}
+                className={`${inp} appearance-none`}
+              >
+                <option value="">Select state…</option>
+                {NIGERIAN_STATES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                LGA{" "}
+                <span className="text-gray-300 font-normal normal-case tracking-normal">
+                  (optional)
+                </span>
+              </label>
+              <select
+                name="lga"
+                value={form.lga}
+                onChange={handleChange}
+                disabled={!form.state}
+                className={`${inp} appearance-none disabled:bg-gray-50 disabled:text-gray-300`}
+              >
+                <option value="">
+                  {form.state ? "Select LGA…" : "Select a state first"}
+                </option>
+                {(NIGERIA_LGAS[form.state] ?? []).map((l) => (
+                  <option key={l} value={l}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+              Address{" "}
+              <span className="text-gray-300 font-normal normal-case tracking-normal">
+                (optional — improves solar sizing accuracy)
+              </span>
+            </label>
+            <input
+              type="text"
+              name="address"
+              placeholder="Street address or nearest landmark"
+              value={form.address}
+              onChange={handleChange}
+              className={inp}
+            />
+          </div>
+
+          {error && (
+            <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+              {error}
+            </p>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="text-sm font-semibold text-gray-500 hover:text-gray-700 px-4 py-2.5 rounded-xl transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="inline-flex items-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white font-semibold text-sm px-5 py-2.5 rounded-xl transition-all"
+          >
+            {saving ? (
+              <>
+                <Loader size={14} className="animate-spin" /> Saving…
+              </>
+            ) : (
+              "Save Changes"
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── CustomerDetail ─────────────────────────────────────────── */
 export default function CustomerDetail() {
   const { id } = useParams();
@@ -85,13 +331,13 @@ export default function CustomerDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  /* Edit modal */
+  const [showEditModal, setShowEditModal] = useState(false);
+
   /* Sizing */
   const [sizing, setSizing] = useState(null);
   const [sizingLoading, setSizingLoading] = useState(false);
   const [sizingError, setSizingError] = useState(null);
-
-  /* ✅ NEW: track last fetched index safely */
-  const [lastSizedIdx, setLastSizedIdx] = useState(null);
 
   /* Status update */
   const [statusUpdating, setStatusUpdating] = useState(false);
@@ -134,10 +380,9 @@ export default function CustomerDetail() {
       setAssessments(sorted);
       setSelectedIdx(0);
 
-      /* ✅ reset sizing state cleanly */
+      /* reset sizing state cleanly */
       setSizing(null);
       setSizingError(null);
-      setLastSizedIdx(null);
 
       setLoading(false);
     })();
@@ -154,15 +399,19 @@ export default function CustomerDetail() {
   const lifespan = selectedAssessment?.settings?.lifespan ?? 25;
   const effectiveDailyKWh = assessmentResult?.energy?.effectiveDailyKWh ?? null;
 
-  /* ── Load sizing (SAFE VERSION) ── */
+  /* ── Load sizing (freeze-on-first-compute) ──
+     If the selected assessment already has a frozen sizing_result,
+     use it directly — no network call, no drift if constants or the
+     customer's location change later. Otherwise compute it once via
+     fetchSizing and persist the result back onto the assessment row. */
   const sizingFetchIdRef = useRef(0);
+  const frozenSizing = selectedAssessment?.sizing_result ?? null;
+  const displaySizing = frozenSizing ?? sizing;
 
   useEffect(() => {
     if (activeTab !== "sizing") return;
     if (!effectiveDailyKWh) return;
-
-    /* ✅ prevent duplicate fetch */
-    if (lastSizedIdx === selectedIdx) return;
+    if (frozenSizing) return;
 
     let cancelled = false;
     const fetchId = ++sizingFetchIdRef.current;
@@ -172,31 +421,62 @@ export default function CustomerDetail() {
       setSizingError(null);
 
       try {
-        const { data } = await fetchSizing(effectiveDailyKWh);
+        const { data } = await fetchSizing(effectiveDailyKWh, {
+          address: customer.address,
+          lga: customer.lga,
+          state: customer.state,
+        });
 
         if (cancelled || fetchId !== sizingFetchIdRef.current) return;
 
+        /* Show the computed result immediately — this must not
+           depend on the persist step below succeeding. */
         setSizing(data);
+        setSizingLoading(false);
 
-        /* ✅ update AFTER success */
-        setLastSizedIdx(selectedIdx);
+        /* Freeze this result on the assessment row so it never
+           drifts if constants or the customer's location change
+           later. Non-fatal if this write fails — sizing still
+           displays fine this session via local state; it just won't
+           be frozen for next time, so it'll recompute on next visit
+           to this tab for this assessment. */
+        const { error: persistErr } = await supabase
+          .from("assessments")
+          .update({ sizing_result: data })
+          .eq("id", selectedAssessment.id);
+
+        if (persistErr) {
+          console.error("Failed to persist sizing_result:", persistErr.message);
+        } else {
+          setAssessments((prev) =>
+            prev.map((a) =>
+              a.id === selectedAssessment.id
+                ? { ...a, sizing_result: data }
+                : a,
+            ),
+          );
+        }
       } catch (err) {
         if (cancelled || fetchId !== sizingFetchIdRef.current) return;
-
         setSizingError(
           err?.response?.data?.error || "Sizing calculation failed.",
         );
-      } finally {
-        if (!cancelled && fetchId === sizingFetchIdRef.current) {
-          setSizingLoading(false);
-        }
+        setSizingLoading(false);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [activeTab, selectedIdx, effectiveDailyKWh, lastSizedIdx]);
+  }, [
+    activeTab,
+    effectiveDailyKWh,
+    frozenSizing,
+    selectedAssessment?.id,
+    customer?.address,
+    customer?.lga,
+    customer?.state,
+  ]);
 
   /* ── Update status ── */
   const updateStatus = async (newStatus) => {
@@ -263,9 +543,18 @@ export default function CustomerDetail() {
                 </span>
               </div>
               <div>
-                <h1 className="font-display font-bold text-xl text-gray-900">
-                  {customer.name}
-                </h1>
+                <div className="flex items-center gap-2">
+                  <h1 className="font-display font-bold text-xl text-gray-900">
+                    {customer.name}
+                  </h1>
+                  <button
+                    onClick={() => setShowEditModal(true)}
+                    className="text-gray-300 hover:text-teal-600 transition-colors"
+                    title="Edit customer details"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                </div>
                 <div className="flex flex-wrap items-center gap-3 mt-1">
                   {customer.phone && (
                     <span className="flex items-center gap-1 text-xs text-gray-400">
@@ -279,12 +568,21 @@ export default function CustomerDetail() {
                       {customer.email}
                     </span>
                   )}
-                  {customer.state && (
+                  {customer.state ? (
                     <span className="flex items-center gap-1 text-xs text-gray-400">
                       <MapPin size={11} />
+                      {customer.address ? `${customer.address}, ` : ""}
                       {customer.state}
                       {customer.lga ? `, ${customer.lga}` : ""}
                     </span>
+                  ) : (
+                    <button
+                      onClick={() => setShowEditModal(true)}
+                      className="flex items-center gap-1 text-xs text-amber-600 hover:text-amber-700 font-medium"
+                    >
+                      <MapPin size={11} />
+                      Add location — improves sizing accuracy
+                    </button>
                   )}
                 </div>
                 {customer.notes && (
@@ -530,14 +828,14 @@ export default function CustomerDetail() {
                 <AlertCircle size={16} className="text-red-500 shrink-0" />
                 <p className="text-sm text-red-600">{sizingError}</p>
               </div>
-            ) : sizing ? (
+            ) : displaySizing ? (
               <>
                 <div className="bg-teal-600 rounded-2xl p-6 text-white">
                   <p className="text-teal-200 text-xs font-bold uppercase tracking-widest mb-2">
                     Effective Daily Load
                   </p>
                   <p className="font-display font-extrabold text-4xl">
-                    {sizing.effectiveDailyKWh.toFixed(1)}
+                    {displaySizing.effectiveDailyKWh.toFixed(1)}
                     <span className="text-xl font-normal text-teal-200 ml-1">
                       kWh/day
                     </span>
@@ -545,26 +843,48 @@ export default function CustomerDetail() {
                   <p className="text-teal-200 text-xs mt-1">
                     Includes 25% diversity buffer + 20% system loss allowance
                   </p>
+
+                  {displaySizing.irradiance && (
+                    <div className="flex items-center gap-2 mt-4 pt-4 border-t border-teal-500/30">
+                      <span
+                        className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${
+                          IRRADIANCE_SOURCE_STYLES[
+                            displaySizing.irradiance.source
+                          ]?.className ??
+                          IRRADIANCE_SOURCE_STYLES.fallback.className
+                        }`}
+                      >
+                        {IRRADIANCE_SOURCE_STYLES[
+                          displaySizing.irradiance.source
+                        ]?.label ?? "Regional average"}
+                      </span>
+                      <span className="text-teal-200 text-xs">
+                        Sized using{" "}
+                        {displaySizing.irradiance.peakSunHours.toFixed(1)}{" "}
+                        kWh/m²/day (worst-month irradiance)
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid md:grid-cols-3 gap-4">
                   {[
                     {
                       title: "Inverter",
-                      value: `${sizing.inverter.sizeKva} kVA`,
-                      sub: sizing.inverter.label,
+                      value: `${displaySizing.inverter.sizeKva} kVA`,
+                      sub: displaySizing.inverter.label,
                       icon: "⚡",
                     },
                     {
                       title: "Solar Panels",
-                      value: `${sizing.panels.count} panels`,
-                      sub: sizing.panels.label,
+                      value: `${displaySizing.panels.count} panels`,
+                      sub: displaySizing.panels.label,
                       icon: "☀️",
                     },
                     {
                       title: "Battery Bank",
-                      value: `${sizing.battery.totalKwh} kWh`,
-                      sub: sizing.battery.label,
+                      value: `${displaySizing.battery.totalKwh} kWh`,
+                      sub: displaySizing.battery.label,
                       icon: "🔋",
                     },
                   ].map(({ title, value, sub, icon }) => (
@@ -593,18 +913,21 @@ export default function CustomerDetail() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-display font-extrabold text-3xl text-gray-900">
-                        {sizing.capex.min >= 1_000_000
-                          ? `₦${(sizing.capex.min / 1_000_000).toFixed(1)}M`
-                          : `₦${(sizing.capex.min / 1_000).toFixed(0)}K`}
+                        {displaySizing.capex.min >= 1_000_000
+                          ? `₦${(displaySizing.capex.min / 1_000_000).toFixed(1)}M`
+                          : `₦${(displaySizing.capex.min / 1_000).toFixed(0)}K`}
                         <span className="text-gray-300 font-normal mx-2">
-                          —
+                          {displaySizing.capex.max ? "—" : "and above"}
                         </span>
-                        {sizing.capex.max >= 1_000_000
-                          ? `₦${(sizing.capex.max / 1_000_000).toFixed(1)}M`
-                          : `₦${(sizing.capex.max / 1_000).toFixed(0)}K`}
+                        {displaySizing.capex.max
+                          ? displaySizing.capex.max >= 1_000_000
+                            ? `₦${(displaySizing.capex.max / 1_000_000).toFixed(1)}M`
+                            : `₦${(displaySizing.capex.max / 1_000).toFixed(0)}K`
+                          : ""}
                       </p>
                       <p className="text-xs text-gray-400 mt-1">
-                        {sizing.capex.tier} system · Nigerian market pricing
+                        {displaySizing.capex.tier} system · Nigerian market
+                        pricing
                       </p>
                     </div>
                     <button
@@ -656,6 +979,14 @@ export default function CustomerDetail() {
           </div>
         </div>
       </div>
+
+      {showEditModal && (
+        <EditCustomerModal
+          customer={customer}
+          onClose={() => setShowEditModal(false)}
+          onSaved={(updated) => setCustomer(updated)}
+        />
+      )}
     </InstallerLayout>
   );
 }

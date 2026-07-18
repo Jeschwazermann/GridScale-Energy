@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Users,
-  TrendingUp,
+  Briefcase,
   FileText,
   Inbox,
   Plus,
@@ -195,12 +195,12 @@ export default function DashboardHome() {
               sub="assessed so far"
             />
             <StatCard
-              icon={TrendingUp}
+              icon={Briefcase}
               iconBg="bg-teal-50"
               iconColor="text-teal-600"
-              label="Savings Identified"
-              value={fmtShort(stats?.totalSavings)}
-              sub="potential annual savings"
+              label="Active Pipeline"
+              value={stats?.activePipeline ?? 0}
+              sub="quoted or in follow-up"
               highlight
             />
             <StatCard
