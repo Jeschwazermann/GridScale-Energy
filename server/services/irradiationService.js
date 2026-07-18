@@ -20,11 +20,11 @@
  * ── Adjust to match your project ─────────────────────────────────────
  * - `supabaseAdmin` below should be swapped for however your other
  *   backend services import the service-role Supabase client
- *   (e.g. `const { supabaseAdmin } = require("../lib/supabase")`).
+ *   (e.g. `import { supabaseAdmin } from "../lib/supabase"`).
 
  */
 
-import { supabaseAdmin } from "../lib/supabase";
+import { supabaseAdmin } from "../lib/supabase.js";
 
 const NASA_POWER_BASE_URL =
   process.env.NASA_POWER_URL ||
