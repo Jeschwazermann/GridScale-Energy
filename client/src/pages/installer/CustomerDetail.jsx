@@ -20,7 +20,7 @@ import ResultCard from "../../components/ResultCard";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/useAuth";
 import { fetchSizing } from "../../services/installerApi";
-import { NIGERIAN_STATES, NIGERIA_LGAS } from "../../constants/nigerianData";
+import { NIGERIA_STATES, NIGERIA_LGAS } from "../../constants/nigerianData";
 
 /* ─── Status config ──────────────────────────────────────────── */
 const STATUS_STYLES = {
@@ -235,7 +235,7 @@ function EditCustomerModal({ customer, onClose, onSaved }) {
                 className={`${inp} appearance-none`}
               >
                 <option value="">Select state…</option>
-                {NIGERIAN_STATES.map((s) => (
+                {NIGERIA_STATES.map((s) => (
                   <option key={s} value={s}>
                     {s}
                   </option>
