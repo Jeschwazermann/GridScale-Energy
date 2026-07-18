@@ -3,6 +3,7 @@ import { Plus, UserPlus, ChevronDown } from "lucide-react";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../contexts/useAuth";
 import { inp } from "./assessmentHelpers";
+import { NIGERIAN_STATES } from "../../../constants/nigerianData";
 
 /* ─── CustomerSelector ───────────────────────────────────────────
    Owns all customer-related state: the list fetch, the dropdown,
@@ -17,6 +18,8 @@ export default function CustomerSelector({ selectedId, onSelect }) {
   const [showNew, setShowNew] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [state, setState] = useState("");
+  const [address, setAddress] = useState("");
   const [creating, setCreating] = useState(false);
 
   /* ── Fetch customer list ── */
@@ -45,7 +48,7 @@ export default function CustomerSelector({ selectedId, onSelect }) {
 
   /* ── Create customer inline ── */
   const handleCreate = async () => {
-    if (!name.trim() || !phone.trim()) return;
+    if (!name.trim() || !phone.trim() || !state) return;
     setCreating(true);
 
     const { data, error } = await supabase
@@ -54,6 +57,8 @@ export default function CustomerSelector({ selectedId, onSelect }) {
         installer_id: user.id,
         name: name.trim(),
         phone: phone.trim(),
+        state: state || null,
+        address: address.trim() || null,
         status: "new",
       })
       .select()
@@ -67,6 +72,8 @@ export default function CustomerSelector({ selectedId, onSelect }) {
       setShowNew(false);
       setName("");
       setPhone("");
+      setState("");
+      setAddress("");
     }
 
     setCreating(false);
@@ -153,9 +160,41 @@ export default function CustomerSelector({ selectedId, onSelect }) {
                 />
               </div>
             </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                  State *
+                </label>
+                <select
+                  value={state}
+                  onChange={(e) => setState(e.target.value)}
+                  className={`${inp} appearance-none`}
+                >
+                  <option value="">Select state…</option>
+                  {NIGERIAN_STATES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Address
+                </label>
+                <input
+                  type="text"
+                  placeholder="Street address or landmark"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  className={inp}
+                />
+              </div>
+            </div>
             <button
               onClick={handleCreate}
-              disabled={creating || !name.trim() || !phone.trim()}
+              disabled={creating || !name.trim() || !phone.trim() || !state}
               className="bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-all"
             >
               {creating ? "Creating…" : "Save Customer"}

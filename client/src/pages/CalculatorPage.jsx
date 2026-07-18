@@ -12,6 +12,7 @@ import {
   Clock,
 } from "lucide-react";
 import { calculate } from "../services/api";
+import { trackEvent } from "../lib/analytics";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 
@@ -376,8 +377,14 @@ export default function CalculatorPage() {
     if (capexSuggestion)
       setSettings((prev) => ({ ...prev, capex: String(capexSuggestion) }));
   };
+  
+  const hasStartedRef = useRef(false);
 
   const handleApplianceChange = (index, e) => {
+     if (!hasStartedRef.current) {
+    hasStartedRef.current = true;
+    trackEvent("calculator_started");
+  }
     const { name, value } = e.target;
     const numeric = ["power", "hours", "days", "units"];
     const sanitized =

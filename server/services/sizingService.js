@@ -17,14 +17,34 @@ const CAPEX_TIERS = [
   { maxDailyKWh: Infinity, min: 20_000_000, max: null, label: "Commercial" },
 ];
 
-const PEAK_SUN_HOURS = 5; // Nigerian average
+// Fallback only — used when no location-specific irradiance figure is
+// available (e.g. irradiationService couldn't resolve a location and
+// no state fallback was passed through). Real assessments should always
+// pass a location-derived worstMonth value in instead.
+const DEFAULT_PEAK_SUN_HOURS = 5;
+
 const SAFETY_FACTOR = 1.25; // headroom for inverter sizing
 const PANEL_LOSS = 1.3; // temperature + wiring + mismatch losses
 
-export const sizeSystem = (effectiveDailyKWh) => {
+/**
+ * @param {number} effectiveDailyKWh
+ * @param {Object} [options]
+ * @param {number} [options.peakSunHours] - Location-specific worst-month
+ *   irradiance (kWh/m²/day), from irradiationService's `worstMonth` field.
+ *   Falls back to the Nigerian flat average if omitted.
+ * @param {"live"|"fallback"|null} [options.irradianceSource] - Passed
+ *   through untouched so callers/UI can flag whether sizing used a real
+ *   location reading or a generic default.
+ */
+export const sizeSystem = (
+  effectiveDailyKWh,
+  { peakSunHours, irradianceSource = null } = {},
+) => {
   if (!effectiveDailyKWh || effectiveDailyKWh <= 0) {
     throw new Error("Valid effectiveDailyKWh is required for system sizing.");
   }
+
+  const resolvedPeakSunHours = peakSunHours ?? DEFAULT_PEAK_SUN_HOURS;
 
   /* ── Inverter ──────────────────────────────────────────────── */
   // Peak load estimate: assume load spread over 8hrs average
@@ -32,7 +52,11 @@ export const sizeSystem = (effectiveDailyKWh) => {
   const inverterKva = INVERTER_SIZES.find((s) => s >= peakLoadKw) ?? 20;
 
   /* ── Solar panels ──────────────────────────────────────────── */
-  const panelKwpNeeded = (effectiveDailyKWh / PEAK_SUN_HOURS) * PANEL_LOSS;
+  // Sized against worst-month irradiance, not the annual average — this
+  // is deliberate: sizing off the annual figure would leave the system
+  // undershooting load during Lagos's wetter months (roughly Jun–Sep).
+  const panelKwpNeeded =
+    (effectiveDailyKWh / resolvedPeakSunHours) * PANEL_LOSS;
   const panelCount = Math.ceil((panelKwpNeeded * 1000) / PANEL_WP);
   const totalKwp = (panelCount * PANEL_WP) / 1000;
 
@@ -47,6 +71,10 @@ export const sizeSystem = (effectiveDailyKWh) => {
 
   return {
     effectiveDailyKWh,
+    irradiance: {
+      peakSunHours: resolvedPeakSunHours,
+      source: irradianceSource, // "live" | "fallback" | null (legacy caller)
+    },
     inverter: {
       sizeKva: inverterKva,
       label: `${inverterKva}kVA inverter`,
