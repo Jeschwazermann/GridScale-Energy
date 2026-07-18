@@ -3,7 +3,7 @@ import { Plus, UserPlus, ChevronDown } from "lucide-react";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../contexts/useAuth";
 import { inp } from "./assessmentHelpers";
-import { NIGERIAN_STATES } from "../../../constants/nigerianData";
+import { NIGERIA_STATES } from "../../../constants/nigerianData";
 
 /* ─── CustomerSelector ───────────────────────────────────────────
    Owns all customer-related state: the list fetch, the dropdown,
@@ -172,7 +172,7 @@ export default function CustomerSelector({ selectedId, onSelect }) {
                   className={`${inp} appearance-none`}
                 >
                   <option value="">Select state…</option>
-                  {NIGERIAN_STATES.map((s) => (
+                  {NIGERIA_STATES.map((s) => (
                     <option key={s} value={s}>
                       {s}
                     </option>
