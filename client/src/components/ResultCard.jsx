@@ -151,6 +151,10 @@ export default function ResultCard({
   lifespan: lifespanProp,
   calculatorInputs,
   onAdjustInputs,
+  // "household" | "business" — pass this in once the calculator form
+  // captures it (e.g. a propertyType/usageType field in formValues).
+  // Defaults to "household" so nothing changes until it's wired up.
+  usageType = "household",
 }) {
   const { state } = useLocation();
   // Kept available for the route-state values used by related result views.
@@ -162,6 +166,12 @@ export default function ResultCard({
   const { energy, grid, generator, solar, comparison } = resolvedResult;
   const [animated, setAnimated] = useState(false);
   const [showModal, setShowModal] = useState(false);
+
+  // Once formValues carries its own usageType/propertyType, prefer that
+  // over the prop default so this stays correct even if a caller forgets
+  // to pass it explicitly.
+  const resolvedUsageType = formValues?.usageType ?? usageType;
+  const isBusiness = resolvedUsageType === "business";
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
@@ -210,8 +220,12 @@ export default function ResultCard({
     animated,
   );
 
-  /* R/* Real-world equivalents — only meaningful when generator is involved */
-  const showFuelEquivalent = hasBothSources || comparedAgainst === "Generator";
+  /* Real-world equivalents — household only. Business framing uses
+     operating-cost language instead (rice bags/fuel litres don't land
+     the same way for an SME/office reader). Only meaningful when a
+     generator is involved either way. */
+  const showFuelEquivalent =
+    !isBusiness && (hasBothSources || comparedAgainst === "Generator");
   const drainEquivalent = showFuelEquivalent
     ? getRealWorldEquivalent(monthlyDrain)
     : null;
@@ -348,7 +362,7 @@ export default function ResultCard({
       >
         <div className="px-6 pt-6 pb-2 flex items-center justify-between">
           <p className="text-xs font-bold uppercase tracking-widest text-gray-500">
-            Your Energy Cost Breakdown
+            Your Energy Costs
           </p>
           <span className="text-xs font-semibold bg-teal-900 text-teal-400 px-3 py-1 rounded-full">
             vs {comparisonLabel}
@@ -371,22 +385,32 @@ export default function ResultCard({
                 {fmtShort(animatedDrain)}
               </p>
               <p className="text-gray-400 text-sm mb-4">
-                every month on energy — money that's gone for good
+                {isBusiness
+                  ? "every month, just to keep your business running"
+                  : "every month on energy — money that's gone for good"}
               </p>
 
-              {drainEquivalent && (
+              {isBusiness ? (
                 <p className="text-gray-600 text-xs mb-5">
-                  That's roughly{" "}
-                  <span className="text-gray-400 font-semibold">
-                    {drainEquivalent}
-                  </span>{" "}
-                  every month, just to keep the lights on.
+                  That's a significant part of your monthly operating cost.
                 </p>
+              ) : (
+                drainEquivalent && (
+                  <p className="text-gray-600 text-xs mb-5">
+                    That's roughly{" "}
+                    <span className="text-gray-400 font-semibold">
+                      {drainEquivalent}
+                    </span>{" "}
+                    every month, just to keep the lights on.
+                  </p>
+                )
               )}
 
               <div className="border-t border-white/5 pt-5 mt-1">
                 <p className="text-gray-500 text-xs font-semibold uppercase tracking-widest mb-2">
-                  Solar stops the drain — saving you
+                  {isBusiness
+                    ? "Switching to solar saves you"
+                    : "Solar stops the drain — saving you"}
                 </p>
                 <p
                   className="font-display font-extrabold leading-none mb-2"
@@ -400,7 +424,15 @@ export default function ResultCard({
                 >
                   {fmtShort(animatedSavings)}/mo
                 </p>
-                {savingsEquivalent ? (
+                {isBusiness ? (
+                  <p className="text-gray-600 text-xs">
+                    That's{" "}
+                    <span className="text-teal-500 font-semibold">
+                      {fmtShort(monthlySavings)}/month
+                    </span>{" "}
+                    back into your operations — not your generator.
+                  </p>
+                ) : savingsEquivalent ? (
                   <p className="text-gray-600 text-xs">
                     That's{" "}
                     <span className="text-teal-500 font-semibold">
@@ -456,9 +488,9 @@ export default function ResultCard({
 
         <div className="grid grid-cols-2 divide-x divide-white/5 border-t border-white/5">
           <div className="px-6 py-4 text-center">
-            <p className="text-gray-600 text-xs mb-1">Monthly Usage</p>
+            <p className="text-gray-600 text-xs mb-1">Daily Usage</p>
             <p className="font-display font-bold text-white text-lg">
-              {fmtKwh(energy.monthlyKWh)}{" "}
+              {fmtKwh(energy.dailyKWh)}{" "}
               <span className="text-sm font-normal text-gray-500">kWh</span>
             </p>
           </div>
@@ -561,7 +593,9 @@ export default function ResultCard({
                   : null;
 
               const sourceEquivalent =
-                label === "Generator" ? getRealWorldEquivalent(monthly) : null;
+                !isBusiness && label === "Generator"
+                  ? getRealWorldEquivalent(monthly)
+                  : null;
 
               return (
                 <div key={label}>

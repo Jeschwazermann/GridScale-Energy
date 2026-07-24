@@ -1,30 +1,5 @@
-/**
- * irradiationService.js
- *
- * Fetches solar irradiance data for a customer/assessment location and
- * feeds it into the sizing pipeline. Two external calls are involved:
- *   1. Geocoding  (address string -> lat/lng)
- *   2. NASA POWER (lat/lng -> monthly irradiance climatology)
- *
- * Both are cached aggressively — irradiance doesn't change year to year
- * in any way that matters for sizing, and geocoding a fixed address
- * string will always resolve to the same point.
- *
- * ── Location precision tiers ──────────────────────────────────────────
- * 1. Full address  (best)   — geocodes to a specific point
- * 2. LGA + state   (middle) — geocodes to a Local Government Area, a
- *    real Nigerian administrative unit, much tighter than a whole state
- * 3. State only    (worst)  — flat constant from STATE_FALLBACK table,
- *    no geocoding attempted
- *
- * ── Adjust to match your project ─────────────────────────────────────
- * - `supabaseAdmin` below should be swapped for however your other
- *   backend services import the service-role Supabase client
- *   (e.g. `import { supabaseAdmin } from "../lib/supabase"`).
-
- */
-
 import { supabaseAdmin } from "../lib/supabase.js";
+import { logger } from "../utils/logger.js";
 
 const NASA_POWER_BASE_URL =
   process.env.NASA_POWER_URL ||
@@ -32,33 +7,111 @@ const NASA_POWER_BASE_URL =
 const NOMINATIM_BASE_URL =
   process.env.NOMINATIM_URL || "https://nominatim.openstreetmap.org/search";
 
-// Round coordinates to ~11km grid cells so nearby customers share a
-// cache entry instead of triggering a fresh NASA POWER call each time.
-const GRID_PRECISION = 1; // decimal places (0.1° ≈ 11km at the equator)
+const GRID_PRECISION = 1;
 
-// Fallback peak-sun-hours by state, used only if geocoding or NASA POWER
-// both fail, or no address/LGA is available at all. Rough Southwest
-// Nigeria averages — replace with better data as you get it. Keeps the
-// sizing flow from blocking on an API outage.
-const STATE_FALLBACK_KWH_PER_M2_PER_DAY = {
-  Lagos: 4.4,
-  Ogun: 4.5,
-  Oyo: 4.6,
-  Osun: 4.6,
-  Ondo: 4.5,
-  Ekiti: 4.7,
-  default: 4.5,
+const STATE_FALLBACK = {
+  Lagos: { annual: 4.4, worstMonth: 3.8 },
+  Ogun: { annual: 4.5, worstMonth: 3.9 },
+  Oyo: { annual: 4.6, worstMonth: 4.0 },
+  Osun: { annual: 4.6, worstMonth: 4.0 },
+  Ondo: { annual: 4.5, worstMonth: 3.9 },
+  Ekiti: { annual: 4.7, worstMonth: 4.1 },
+  default: { annual: 4.5, worstMonth: 3.8 },
 };
 
 function roundCoord(value) {
   return Number(value.toFixed(GRID_PRECISION));
 }
 
-/**
- * Geocode an arbitrary location string to lat/lng, using a Supabase-backed
- * cache keyed on the normalized text. Used for both full addresses and
- * "LGA, state" strings — the cache doesn't care which tier it came from.
- */
+// ─── Retry utility ───────────────────────────────────────────────────────────
+
+const RETRY_DEFAULTS = {
+  maxAttempts: 3,
+  baseDelayMs: 500, // 500ms → 1000ms → 2000ms
+  maxDelayMs: 10_000,
+  jitter: true, // avoids thundering-herd on shared upstream
+};
+
+async function fetchWithRetry(url, fetchOptions = {}, retryOptions = {}) {
+  const { maxAttempts, baseDelayMs, maxDelayMs, jitter } = {
+    ...RETRY_DEFAULTS,
+    ...retryOptions,
+  };
+
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    let response;
+
+    try {
+      response = await fetch(url, fetchOptions);
+    } catch (networkErr) {
+      lastError = networkErr;
+      if (attempt === maxAttempts) break;
+
+      const delay = computeDelay(attempt, baseDelayMs, maxDelayMs, jitter);
+      logger.warn("fetchWithRetry network error", {
+        attempt,
+        maxAttempts,
+        url: url.toString(),
+        error: networkErr.message,
+      });
+      await sleep(delay);
+      continue;
+    }
+
+    if (response.ok) return response;
+
+    if (response.status === 429 || response.status >= 500) {
+      lastError = new Error(`HTTP ${response.status} from ${url}`);
+      if (attempt === maxAttempts) break;
+
+      const retryAfterHeader = response.headers.get("Retry-After");
+      const retryAfterMs = retryAfterHeader
+        ? parseRetryAfter(retryAfterHeader)
+        : null;
+
+      const delay =
+        retryAfterMs ?? computeDelay(attempt, baseDelayMs, maxDelayMs, jitter);
+
+      logger.warn(
+        `[fetchWithRetry] HTTP ${response.status} on attempt ${attempt}/${maxAttempts}. ` +
+          `Retrying in ${delay}ms…`,
+      );
+      await sleep(delay);
+      continue;
+    }
+
+    // Non-retryable HTTP error (4xx except 429)
+    throw new Error(`HTTP ${response.status} from ${url}`);
+  }
+
+  throw (
+    lastError ??
+    new Error(`fetchWithRetry exhausted after ${maxAttempts} attempts`)
+  );
+}
+
+function computeDelay(attempt, baseDelayMs, maxDelayMs, jitter) {
+  const exponential = baseDelayMs * 2 ** (attempt - 1);
+  const capped = Math.min(exponential, maxDelayMs);
+  return jitter ? capped * (0.8 + Math.random() * 0.4) : capped;
+}
+
+function parseRetryAfter(header) {
+  const seconds = Number(header);
+  if (!Number.isNaN(seconds)) return seconds * 1000;
+  const date = Date.parse(header);
+  if (!Number.isNaN(date)) return Math.max(0, date - Date.now());
+  return null;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// ─── Geocoding ───────────────────────────────────────────────────────────────
+
 async function geocodeText(locationText) {
   const normalized = locationText.trim().toLowerCase();
 
@@ -69,32 +122,35 @@ async function geocodeText(locationText) {
     .maybeSingle();
 
   if (cacheReadError) {
-    console.error("geocode_cache read error:", cacheReadError.message);
+    logger.error("geocode_cache read failed", {
+      error: cacheReadError.message,
+      address: normalized,
+    });
   }
+
+  // Cache hit — return immediately
   if (cached) {
     return { latitude: cached.latitude, longitude: cached.longitude };
   }
 
+  // Cache miss — call Nominatim
   const url = new URL(NOMINATIM_BASE_URL);
   url.searchParams.set("q", `${locationText}, Nigeria`);
   url.searchParams.set("format", "json");
   url.searchParams.set("limit", "1");
 
-  const response = await fetch(url.toString(), {
-    headers: {
-      // Nominatim usage policy requires a descriptive User-Agent
-      "User-Agent": "GridScaleAfrica/1.0 (support@gridscaleafrica.com)",
+  const response = await fetchWithRetry(
+    url.toString(),
+    {
+      headers: {
+        "User-Agent": "GridScaleAfrica/1.0 (support@gridscaleafrica.com)",
+      },
     },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Geocoding request failed: ${response.status}`);
-  }
+    { maxAttempts: 3, baseDelayMs: 1_000 }, // 1s → 2s → 4s
+  );
 
   const results = await response.json();
-  if (!results.length) {
-    return null; // caller falls back to the next precision tier
-  }
+  if (!results.length) return null;
 
   const latitude = parseFloat(results[0].lat);
   const longitude = parseFloat(results[0].lon);
@@ -104,16 +160,16 @@ async function geocodeText(locationText) {
     .insert({ address_key: normalized, latitude, longitude });
 
   if (cacheWriteError) {
-    console.error("geocode_cache write error:", cacheWriteError.message);
+    logger.error("geocode_cache write error:", {
+      error: cacheWriteError.message,
+    });
   }
 
   return { latitude, longitude };
 }
 
-/**
- * Fetch monthly + annual solar irradiance for a lat/lng from NASA POWER,
- * using a Supabase-backed cache keyed on rounded coordinates.
- */
+// ─── NASA POWER irradiance ────────────────────────────────────────────────────
+
 async function fetchIrradiance(latitude, longitude) {
   const latKey = roundCoord(latitude);
   const lngKey = roundCoord(longitude);
@@ -126,12 +182,23 @@ async function fetchIrradiance(latitude, longitude) {
     .maybeSingle();
 
   if (cacheReadError) {
-    console.error("irradiation_cache read error:", cacheReadError.message);
-  }
-  if (cached) {
-    return { monthlyData: cached.monthly_data, annualAvg: cached.annual_avg };
+    // Log the read error but do NOT abort — fall through to NASA fetch
+    logger.error("irradiation_cache read failed", {
+      error: cacheReadError.message,
+      lat: latKey,
+      lng: lngKey,
+    });
   }
 
+  // Cache hit — return immediately
+  if (cached) {
+    return {
+      monthlyData: cached.monthly_data,
+      annualAvg: cached.annual_avg,
+    };
+  }
+
+  // Cache miss — fetch from NASA POWER
   const url = new URL(NASA_POWER_BASE_URL);
   url.searchParams.set("parameters", "ALLSKY_SFC_SW_DWN");
   url.searchParams.set("community", "RE");
@@ -139,11 +206,11 @@ async function fetchIrradiance(latitude, longitude) {
   url.searchParams.set("latitude", latitude);
   url.searchParams.set("format", "JSON");
 
-  const response = await fetch(url.toString());
-
-  if (!response.ok) {
-    throw new Error(`NASA POWER request failed: ${response.status}`);
-  }
+  const response = await fetchWithRetry(
+    url.toString(),
+    {},
+    { maxAttempts: 4, baseDelayMs: 500 }, // 500ms → 1s → 2s → 4s
+  );
 
   const payload = await response.json();
   const values = payload?.properties?.parameter?.ALLSKY_SFC_SW_DWN;
@@ -152,7 +219,6 @@ async function fetchIrradiance(latitude, longitude) {
     throw new Error("NASA POWER response missing expected irradiance data");
   }
 
-  // Response keys: JAN..DEC plus ANN (annual average)
   const monthKeys = [
     "JAN",
     "FEB",
@@ -172,6 +238,7 @@ async function fetchIrradiance(latitude, longitude) {
     values.ANN ??
     monthlyData.reduce((sum, v) => sum + v, 0) / monthlyData.length;
 
+  // Write to cache (non-fatal if it fails)
   const { error: cacheWriteError } = await supabaseAdmin
     .from("irradiation_cache")
     .insert({
@@ -182,20 +249,16 @@ async function fetchIrradiance(latitude, longitude) {
     });
 
   if (cacheWriteError) {
-    console.error("irradiation_cache write error:", cacheWriteError.message);
+    logger.error("irradiation_cache write error:", {
+      error: cacheWriteError.message,
+    });
   }
 
   return { monthlyData, annualAvg };
 }
 
-/**
- * Attempt to geocode + fetch irradiance for a given location string.
- * Returns null (rather than throwing) if geocoding comes back empty,
- * so callers can fall through to the next precision tier. Genuine
- * network/API errors still throw — those are caught one level up in
- * getIrradianceForLocation, which is the only function that decides
- * when to give up and use the flat state constant.
- */
+// ─── Internal helper ──────────────────────────────────────────────────────────
+
 async function resolveIrradianceForText(locationText) {
   const coords = await geocodeText(locationText);
   if (!coords) return null;
@@ -214,68 +277,48 @@ async function resolveIrradianceForText(locationText) {
   };
 }
 
-/**
- * Public entry point: given an address, LGA, and state (each optional,
- * in descending order of precision), return irradiance data suitable
- * for solar sizing.
- *
- * Precision tiers attempted in order:
- *   1. address              -> geocode directly
- *   2. lga + state          -> geocode "{lga}, {state}, Nigeria"
- *   3. state alone          -> flat constant, no geocoding
- *
- * Returns:
- *   {
- *     source: "address" | "lga" | "fallback",
- *     latitude, longitude,       // null when source is "fallback"
- *     monthlyData: number[12] | null,
- *     annualAvg: number,
- *     worstMonth: number,        // the value sizing should actually use
- *   }
- */
+// ─── Public API ───────────────────────────────────────────────────────────────
+
 export async function getIrradianceForLocation({ address, lga, state }) {
+  // Tier 1: Address-level geocode
   if (address) {
     try {
       const result = await resolveIrradianceForText(address);
-      if (result) {
-        return { source: "address", ...result };
-      }
-      // Geocoding returned no match for this address — fall through
-      // to the LGA tier rather than giving up immediately.
+      if (result) return { source: "address", ...result };
     } catch (err) {
-      console.error(
-        "Address-level irradiance lookup failed, trying LGA:",
-        err.message,
+      logger.warn(
+        "Address-level irradiance lookup failed, falling back to LGA",
+        {
+          address,
+          error: err.message,
+        },
       );
     }
   }
 
+  // Tier 2: LGA + State geocode
   if (lga && state) {
     try {
       const result = await resolveIrradianceForText(`${lga}, ${state}`);
-      if (result) {
-        return { source: "lga", ...result };
-      }
+      if (result) return { source: "lga", ...result };
     } catch (err) {
-      console.error(
-        "LGA-level irradiance lookup failed, using state fallback:",
-        err.message,
-      );
+      logger.warn("LGA-level irradiance lookup failed, using state fallback", {
+        lga,
+        state,
+        error: err.message,
+      });
     }
   }
 
-  // Final fallback: no usable address or LGA, or both geocoding
-  // attempts failed/returned nothing.
-  const fallbackValue =
-    STATE_FALLBACK_KWH_PER_M2_PER_DAY[state] ??
-    STATE_FALLBACK_KWH_PER_M2_PER_DAY.default;
-
+  // Tier 3: State static fallback
+  const fallback = STATE_FALLBACK[state] || STATE_FALLBACK.default;
   return {
     source: "fallback",
     latitude: null,
     longitude: null,
     monthlyData: null,
-    annualAvg: fallbackValue,
-    worstMonth: fallbackValue,
+    annualAvg: fallback.annual,
+    worstMonth: fallback.worstMonth,
+    stateUsed: state || "default",
   };
 }

@@ -5,6 +5,7 @@ export const gridCost = (energy, tariff) => {
   return {
     annualCost,
     monthlyCost: annualCost / 12,
+    dailyCost: annualCost / 365,
     gridKWh: energy.gridKWh,
   };
 };

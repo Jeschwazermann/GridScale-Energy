@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
+import { createPortal } from "react-dom";
 import {
   ArrowLeft,
   Plus,
@@ -10,6 +11,8 @@ import {
   Zap,
   Fuel,
   Clock,
+  Home,
+  Briefcase,
 } from "lucide-react";
 import { calculate } from "../services/api";
 import { trackEvent } from "../lib/analytics";
@@ -87,6 +90,17 @@ const GRID_HOUR_OPTIONS = [0, 2, 4, 6, 8, 12, 16, 20, 24];
 /* ─── Generator hours options ────────────────────────────────── */
 // Independent of grid hours — user specifies actual run time
 const GEN_HOUR_OPTIONS = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 24];
+
+/* ─── Usage type options ─────────────────────────────────────── *
+ * Drives copy framing on the results page (ResultCard reads this
+ * from formValues.usageType) — household leans on loss-aversion +
+ * real-world anchors (rice bags, fuel litres); business leans on
+ * operating-cost framing. Doesn't affect the calculation itself.
+ */
+const USAGE_TYPE_OPTIONS = [
+  { value: "household", label: "My home", icon: Home },
+  { value: "business", label: "My business", icon: Briefcase },
+];
 
 /* ─── Power supply contextual labels ────────────────────────── */
 const gridHoursLabel = (hrs) => {
@@ -197,10 +211,12 @@ const Field = ({ label, hint, children }) => (
 );
 
 /* ─── ApplianceRow ───────────────────────────────────────────── */
-function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
+function ApplianceRow({ appliance, index, onChange, onRemove }) {
   const [query, setQuery] = useState(appliance.name);
   const [open, setOpen] = useState(false);
+  const [dropdownStyle, setDropdownStyle] = useState({});
   const containerRef = useRef(null);
+  const inputRef = useRef(null);
 
   const filtered =
     query.trim().length > 0
@@ -208,6 +224,30 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
           a.name.toLowerCase().includes(query.toLowerCase()),
         ).slice(0, 8)
       : [];
+
+  // Reposition dropdown whenever it opens or window resizes
+  useEffect(() => {
+    if (!open || !inputRef.current) return;
+
+    const updatePosition = () => {
+      const rect = inputRef.current.getBoundingClientRect();
+      setDropdownStyle({
+        position: "fixed",
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: rect.width,
+        zIndex: 9999,
+      });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -230,32 +270,21 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
     onChange(index, { target: { name: "name", value: e.target.value } });
   };
 
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr_1fr_1fr_36px] gap-2 items-start md:items-center bg-gray-50 md:bg-transparent rounded-xl md:rounded-none p-3 md:p-0">
-      <div className="relative" ref={containerRef}>
-        <div className="relative">
-          <Search
-            size={14}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300 pointer-events-none"
-          />
-          <input
-            type="text"
-            placeholder="Search appliance…"
-            value={query}
-            onChange={handleQueryChange}
-            onFocus={() => {
-              if (query.trim()) setOpen(true);
-            }}
-            className={`${inp} pl-9`}
-          />
-        </div>
-        {open && filtered.length > 0 && (
-          <div className="absolute z-30 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
+  const dropdown =
+    open && filtered.length > 0
+      ? createPortal(
+          <div
+            style={dropdownStyle}
+            className="bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden"
+          >
             {filtered.map((item) => (
               <button
                 key={item.name}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => selectAppliance(item)}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  selectAppliance(item);
+                }}
+                onClick={(e) => e.preventDefault()}
                 className="w-full text-left px-4 py-2.5 hover:bg-teal-50 flex justify-between items-center group transition-colors"
               >
                 <span className="text-sm text-gray-800 flex items-center gap-2">
@@ -267,8 +296,32 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
                 </span>
               </button>
             ))}
-          </div>
-        )}
+          </div>,
+          document.body,
+        )
+      : null;
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr_1fr_1fr_36px] gap-2 items-start md:items-center bg-gray-50 md:bg-transparent rounded-xl md:rounded-none p-3 md:p-0">
+      <div className="relative" ref={containerRef}>
+        <div className="relative">
+          <Search
+            size={14}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300 pointer-events-none"
+          />
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder="Search appliance…"
+            value={query}
+            onChange={handleQueryChange}
+            onFocus={() => {
+              if (query.trim()) setOpen(true);
+            }}
+            className={`${inp} pl-9`}
+          />
+        </div>
+        {dropdown}
       </div>
 
       <input
@@ -286,6 +339,11 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
         placeholder="Hrs/day"
         value={appliance.hours}
         onChange={(e) => onChange(index, e)}
+        onBlur={(e) => {
+          const v = parseFloat(e.target.value);
+          if (!isNaN(v) && v > 24)
+            onChange(index, { target: { name: "hours", value: "24" } });
+        }}
         min="0"
         max="24"
         className={inp}
@@ -296,6 +354,11 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
         placeholder="Days/yr"
         value={appliance.days}
         onChange={(e) => onChange(index, e)}
+        onBlur={(e) => {
+          const v = parseFloat(e.target.value);
+          if (!isNaN(v) && v > 365)
+            onChange(index, { target: { name: "days", value: "365" } });
+        }}
         min="0"
         max="365"
         className={inp}
@@ -312,8 +375,7 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
 
       <button
         onClick={() => onRemove(index)}
-        disabled={isOnly}
-        className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 disabled:opacity-20 transition-all self-center"
+        className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-all self-center"
       >
         <Trash2 size={15} />
       </button>
@@ -322,7 +384,15 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
 }
 
 /* ─── Main ───────────────────────────────────────────────────── */
-const emptyAppliance = { name: "", power: "", hours: "", days: "", units: "1" };
+let _id = 0;
+const newAppliance = () => ({
+  id: ++_id,
+  name: "",
+  power: "",
+  hours: "",
+  days: "",
+  units: "1",
+});
 
 export default function CalculatorPage() {
   const navigate = useNavigate();
@@ -335,8 +405,11 @@ export default function CalculatorPage() {
     window.scrollTo({ top: 0, behavior: "instant" });
   }, []);
 
+  const [usageType, setUsageType] = useState(
+    savedForm?.usageType ?? "household",
+  );
   const [appliances, setAppliances] = useState(
-    savedForm?.appliances ?? [{ ...emptyAppliance }],
+    savedForm?.appliances ?? [newAppliance()],
   );
   const [includeGrid, setIncludeGrid] = useState(
     savedForm?.includeGrid ?? false,
@@ -377,18 +450,27 @@ export default function CalculatorPage() {
     if (capexSuggestion)
       setSettings((prev) => ({ ...prev, capex: String(capexSuggestion) }));
   };
-  
+
   const hasStartedRef = useRef(false);
 
+  const FIELD_LIMITS = { hours: 24, days: 365 };
+
   const handleApplianceChange = (index, e) => {
-     if (!hasStartedRef.current) {
-    hasStartedRef.current = true;
-    trackEvent("calculator_started");
-  }
+    if (!hasStartedRef.current) {
+      hasStartedRef.current = true;
+      trackEvent("calculator_started");
+    }
     const { name, value } = e.target;
     const numeric = ["power", "hours", "days", "units"];
-    const sanitized =
-      numeric.includes(name) && parseFloat(value) < 0 ? "0" : value;
+    let sanitized = value;
+    if (numeric.includes(name)) {
+      const num = parseFloat(value);
+      if (num < 0) {
+        sanitized = "0";
+      } else if (name in FIELD_LIMITS && num > FIELD_LIMITS[name]) {
+        sanitized = String(FIELD_LIMITS[name]);
+      }
+    }
     setAppliances((prev) =>
       prev.map((item, i) =>
         i === index ? { ...item, [name]: sanitized } : item,
@@ -396,11 +478,15 @@ export default function CalculatorPage() {
     );
   };
 
-  const addAppliance = () =>
-    setAppliances((prev) => [...prev, { ...emptyAppliance }]);
+  const addAppliance = () => setAppliances((prev) => [...prev, newAppliance()]);
 
-  const removeAppliance = (index) =>
+  const removeAppliance = (index) => {
+    if (appliances.length === 1) {
+      setAppliances([newAppliance()]);
+      return;
+    }
     setAppliances((prev) => prev.filter((_, i) => i !== index));
+  };
 
   const handleSettingsChange = (e) => {
     const { name, value } = e.target;
@@ -485,7 +571,13 @@ export default function CalculatorPage() {
           lifespan: parseFloat(settings.lifespan),
           suggestedCapex: capexSuggestion,
           currentCapex: parseFloat(settings.capex),
-          formValues: { appliances, settings, includeGrid, includeGenerator },
+          formValues: {
+            appliances,
+            settings,
+            includeGrid,
+            includeGenerator,
+            usageType,
+          },
         },
       });
     } catch {
@@ -518,6 +610,34 @@ export default function CalculatorPage() {
       </div>
 
       <div className="max-w-3xl mx-auto px-6 py-10 space-y-6">
+        {/* ── What are we calculating for? ──────────────────────────────
+            Drives copy framing on the results page only — doesn't touch
+            the calculation payload. Household defaults so nothing
+            changes for existing users who never see this toggled.
+        ─────────────────────────────────────────────────────────────── */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5">
+          <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
+            What are you calculating for?
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {USAGE_TYPE_OPTIONS.map(({ value, label, icon: Icon }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setUsageType(value)}
+                className={`flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold border transition-all ${
+                  usageType === value
+                    ? "bg-teal-600 border-teal-600 text-white shadow-sm"
+                    : "bg-white border-gray-200 text-gray-700 hover:border-teal-300 hover:text-teal-700"
+                }`}
+              >
+                <Icon size={15} />
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* ── Appliances ── */}
         <SectionCard
           icon={Zap}
@@ -546,7 +666,7 @@ export default function CalculatorPage() {
           <div className="space-y-2">
             {appliances.map((appliance, index) => (
               <ApplianceRow
-                key={index}
+                key={appliance.id}
                 appliance={appliance}
                 index={index}
                 onChange={handleApplianceChange}
@@ -792,13 +912,30 @@ export default function CalculatorPage() {
             >
               <div className="relative">
                 <input
-                  type="number"
+                  type="text"
                   name="capex"
-                  placeholder="e.g. 3500000"
-                  value={settings.capex}
-                  onChange={handleSettingsChange}
+                  placeholder="e.g. 3,500,000"
+                  value={
+                    settings.capex
+                      ? Number(settings.capex).toLocaleString("en-NG")
+                      : ""
+                  }
+                  onChange={(e) => {
+                    // Strip everything except digits
+                    const raw = e.target.value.replace(/[^0-9]/g, "");
+                    setSettings((prev) => ({ ...prev, capex: raw }));
+                  }}
                   className={inp}
                 />
+                {settings.capex && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-gray-400 pointer-events-none">
+                    {Number(settings.capex) >= 1_000_000
+                      ? `₦${(Number(settings.capex) / 1_000_000).toFixed(2)}M`
+                      : Number(settings.capex) >= 1_000
+                        ? `₦${(Number(settings.capex) / 1_000).toFixed(0)}K`
+                        : ""}
+                  </span>
+                )}
                 {capexSuggestion && !settings.capex && (
                   <button
                     onClick={applyCapexSuggestion}
