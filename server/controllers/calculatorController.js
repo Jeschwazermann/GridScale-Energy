@@ -48,6 +48,8 @@ function sanitizeAppliance(raw, index) {
     }
   }
 
+  out.days = 365;
+
   // Preserve name for debugging/logging; not used in calculation
   out.name = typeof raw.name === "string" ? raw.name.trim().slice(0, 100) : "";
 

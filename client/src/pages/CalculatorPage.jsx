@@ -302,7 +302,7 @@ function ApplianceRow({ appliance, index, onChange, onRemove }) {
       : null;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr_1fr_1fr_36px] gap-2 items-start md:items-center bg-gray-50 md:bg-transparent rounded-xl md:rounded-none p-3 md:p-0">
+    <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr_1fr_36px] gap-2 items-start md:items-center bg-gray-50 md:bg-transparent rounded-xl md:rounded-none p-3 md:p-0">
       <div className="relative" ref={containerRef}>
         <div className="relative">
           <Search
@@ -350,21 +350,6 @@ function ApplianceRow({ appliance, index, onChange, onRemove }) {
       />
       <input
         type="number"
-        name="days"
-        placeholder="Days/yr"
-        value={appliance.days}
-        onChange={(e) => onChange(index, e)}
-        onBlur={(e) => {
-          const v = parseFloat(e.target.value);
-          if (!isNaN(v) && v > 365)
-            onChange(index, { target: { name: "days", value: "365" } });
-        }}
-        min="0"
-        max="365"
-        className={inp}
-      />
-      <input
-        type="number"
         name="units"
         placeholder="Units"
         value={appliance.units}
@@ -390,7 +375,6 @@ const newAppliance = () => ({
   name: "",
   power: "",
   hours: "",
-  days: "",
   units: "1",
 });
 
@@ -439,9 +423,8 @@ export default function CalculatorPage() {
     const annualKWh = appliances.reduce((sum, a) => {
       const p = parseFloat(a.power) || 0;
       const h = parseFloat(a.hours) || 0;
-      const d = parseFloat(a.days) || 0;
       const u = parseFloat(a.units) || 1;
-      return sum + (p * h * d * u) / 1000;
+      return sum + (p * h * 365 * u) / 1000;
     }, 0);
     return suggestCapex(annualKWh);
   }, [appliances]);
@@ -453,7 +436,7 @@ export default function CalculatorPage() {
 
   const hasStartedRef = useRef(false);
 
-  const FIELD_LIMITS = { hours: 24, days: 365 };
+  const FIELD_LIMITS = { hours: 24 };
 
   const handleApplianceChange = (index, e) => {
     if (!hasStartedRef.current) {
@@ -461,7 +444,7 @@ export default function CalculatorPage() {
       trackEvent("calculator_started");
     }
     const { name, value } = e.target;
-    const numeric = ["power", "hours", "days", "units"];
+    const numeric = ["power", "hours", "units"];
     let sanitized = value;
     if (numeric.includes(name)) {
       const num = parseFloat(value);
@@ -503,12 +486,10 @@ export default function CalculatorPage() {
 
     if (appliances.length === 0) return setError("Add at least one appliance.");
 
-    const incomplete = appliances.some(
-      (a) => !a.power || !a.hours || !a.days || !a.units,
-    );
+    const incomplete = appliances.some((a) => !a.power || !a.hours || !a.units);
     if (incomplete)
       return setError(
-        "Please complete all fields for each appliance — Power, Hrs used per day, Days/Year, and Units.",
+        "Please complete all fields for each appliance — Power, Hrs used per day, and Units.",
       );
 
     if (includeGrid && !settings.gridTariff)
@@ -549,7 +530,7 @@ export default function CalculatorPage() {
         appliances: appliances.map((a) => ({
           power: parseFloat(a.power),
           hours: parseFloat(a.hours),
-          days: parseFloat(a.days),
+          days: 365,
           units: parseFloat(a.units),
         })),
         capex: parseFloat(settings.capex),
@@ -646,22 +627,17 @@ export default function CalculatorPage() {
           title="Appliances"
           subtitle="Search for each device — wattage fills in automatically"
         >
-          <div className="hidden md:grid grid-cols-[2fr_1fr_1fr_1fr_1fr_36px] gap-2 mb-3">
-            {[
-              "Appliance",
-              "Power (W)",
-              "Hrs used/day",
-              "Days/Year",
-              "Units",
-              "",
-            ].map((h) => (
-              <span
-                key={h}
-                className="text-xs font-semibold text-gray-400 uppercase tracking-wide"
-              >
-                {h}
-              </span>
-            ))}
+          <div className="hidden md:grid grid-cols-[2fr_1fr_1fr_1fr_36px] gap-2 mb-3">
+            {["Appliance", "Power (W)", "Hrs used/day", "Units", ""].map(
+              (h) => (
+                <span
+                  key={h}
+                  className="text-xs font-semibold text-gray-400 uppercase tracking-wide"
+                >
+                  {h}
+                </span>
+              ),
+            )}
           </div>
           <div className="space-y-2">
             {appliances.map((appliance, index) => (
