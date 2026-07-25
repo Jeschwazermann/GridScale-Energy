@@ -229,7 +229,7 @@ export default function LeadsPage() {
 
         {/* ── Status tabs ── */}
         <div className="flex gap-1 bg-white rounded-2xl border border-gray-100 shadow-sm p-1.5">
-          {TABS.map(({ value, label, color }) => {
+          {TABS.map(({ value, label }) => {
             const count = countForTab(value);
             const active = activeTab === value;
             return (
