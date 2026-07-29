@@ -69,9 +69,8 @@ export default function NewAssessment() {
     const annualKWh = appliances.reduce((sum, a) => {
       const p = parseFloat(a.power) || 0;
       const h = parseFloat(a.hours) || 0;
-      const d = parseFloat(a.days) || 0;
       const u = parseFloat(a.units) || 1;
-      return sum + (p * h * d * u) / 1000;
+      return sum + (p * h * 365 * u) / 1000;
     }, 0);
     return suggestCapex(annualKWh);
   }, [appliances]);
@@ -79,7 +78,7 @@ export default function NewAssessment() {
   /* ── Appliance handlers ── */
   const handleApplianceChange = (index, e) => {
     const { name, value } = e.target;
-    const numeric = ["power", "hours", "days", "units"];
+    const numeric = ["power", "hours", "units"];
     const sanitized =
       numeric.includes(name) && parseFloat(value) < 0 ? "0" : value;
     setAppliances((prev) =>
@@ -118,12 +117,10 @@ export default function NewAssessment() {
       );
     if (appliances.length === 0) return setError("Add at least one appliance.");
 
-    const incomplete = appliances.some(
-      (a) => !a.power || !a.hours || !a.days || !a.units,
-    );
+    const incomplete = appliances.some((a) => !a.power || !a.hours || !a.units);
     if (incomplete)
       return setError(
-        "Complete all appliance fields — Power, Hrs/Day, Days/Year, and Units.",
+        "Complete all appliance fields — Power, Hrs/Day, and Units.",
       );
 
     if (includeGrid && !settings.gridTariff)
@@ -162,7 +159,7 @@ export default function NewAssessment() {
         appliances: appliances.map((a) => ({
           power: parseFloat(a.power),
           hours: parseFloat(a.hours),
-          days: parseFloat(a.days),
+          days: 365,
           units: parseFloat(a.units),
         })),
         capex: parseFloat(settings.capex),
