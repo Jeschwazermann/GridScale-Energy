@@ -4,6 +4,7 @@ import morgan from "morgan";
 import calculatorRoutes from "./routes/calculatorRoute.js";
 import installerRoutes from "./routes/installerRoute.js";
 import leadRoutes from "./routes/leadRoute.js";
+import profileRoutes from "./routes/consumptionProfileRoute.js";
 import logger from "./utils/logger.js";
 import errorHandler from "./middleware/errorHandler.js";
 import notFoundHandler from "./middleware/notFoundHandler.js";
@@ -26,9 +27,10 @@ app.use(
 app.use("/api", calculatorRoutes);
 app.use("/api/installer", installerRoutes);
 app.use("/api/leads", leadRoutes);
-
-app.use(errorHandler);
+app.use("/api/profiles", profileRoutes);
 
 app.use(notFoundHandler);
+
+app.use(errorHandler);
 
 export default app;
