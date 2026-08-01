@@ -1,7 +1,4 @@
 /**
- * ProfileBuilder.jsx
- * GridScale Africa
- *
  * Multi-step consumption profile capture form.
  * Steps: 1 Profile type → 2 Appliances → 3 Usage pattern → 4 Review & save
  *
@@ -12,54 +9,33 @@
  *   onCancel     {fn}       called when user dismisses without saving
  */
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { StepNav } from "./StepNav.jsx";
 import { StepType } from "./StepType.jsx";
 import { StepAppliances } from "./StepAppliances.jsx";
 import { StepUsage } from "./StepUsage.jsx";
 import { StepReview } from "./StepReview.jsx";
 import { buildLoadCurveClient } from "../../utils/loadCurve.js";
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-export const STEPS = [
-  { id: 1, label: "Customer type" },
-  { id: 2, label: "Appliances" },
-  { id: 3, label: "Usage pattern" },
-  { id: 4, label: "Review" },
-];
-
-const DEFAULT_USAGE = {
-  gridHoursWeekday: 6,
-  gridHoursWeekend: 4,
-  isWeekendDifferent: false,
-  peakPeriod: "evening",
-  hasCriticalLoads: false,
-  generatorHoursDay: "",
-  generatorFuelLitres: "",
-  generatorFuelSpend: "",
-  notes: "",
-};
-
-// ---------------------------------------------------------------------------
-// ProfileBuilder
-// ---------------------------------------------------------------------------
+import { STEPS, DEFAULT_USAGE } from "../../constants/profileBuild.js";
 
 export function ProfileBuilder({ customerId, profileId, onSave, onCancel }) {
   const [step, setStep] = useState(1);
   const [profileType, setProfileType] = useState(null);
   const [appliances, setAppliances] = useState([]);
   const [usage, setUsage] = useState(DEFAULT_USAGE);
-  const [loadCurve, setLoadCurve] = useState(new Array(24).fill(0));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
-  const [loadingEdit, setLoadingEdit] = useState(false);
+  // Initialise to true when a profileId is present so the very first render
+  // already shows the spinner — no synchronous setState inside the effect needed.
+  const [loadingEdit, setLoadingEdit] = useState(!!profileId);
 
-  // Track whether appliance templates have been loaded for this profile type
-  // so we don't reload them if the user goes back to Step 1
+  // Tracks which profile type's templates are already in `appliances` so we
+  // don't clobber them if the user goes back to Step 1 and re-selects the
+  // same type, and so we don't clobber an in-flight edit load either.
   const loadedTypeRef = useRef(null);
+  // True while the edit-load effect is still running; prevents handleTypeSelect
+  // from overwriting appliances with templates before the real data arrives.
+  const editLoadingRef = useRef(false);
 
   // -------------------------------------------------------------------
   // Edit mode: load existing profile
@@ -67,7 +43,8 @@ export function ProfileBuilder({ customerId, profileId, onSave, onCancel }) {
   useEffect(() => {
     if (!profileId) return;
     let cancelled = false;
-    setLoadingEdit(true);
+
+    editLoadingRef.current = true;
 
     (async () => {
       try {
@@ -78,13 +55,16 @@ export function ProfileBuilder({ customerId, profileId, onSave, onCancel }) {
         if (cancelled) return;
 
         const p = data.profile;
-        setProfileType(p.profile_type);
+
+        // Stamp the ref before calling setters so handleTypeSelect sees it
+        // immediately and skips the template fetch if the user is fast.
         loadedTypeRef.current = p.profile_type;
+
+        setProfileType(p.profile_type);
 
         setAppliances(
           (data.appliances || []).map((a) => ({
             ...a,
-            // Ensure active_hours is an array for the UI
             active_hours: Array.isArray(a.active_hours)
               ? a.active_hours
               : a.active_hours
@@ -107,21 +87,29 @@ export function ProfileBuilder({ customerId, profileId, onSave, onCancel }) {
       } catch (err) {
         if (!cancelled) setError(err.message);
       } finally {
-        if (!cancelled) setLoadingEdit(false);
+        if (!cancelled) {
+          editLoadingRef.current = false;
+          setLoadingEdit(false);
+        }
       }
     })();
 
     return () => {
       cancelled = true;
+      editLoadingRef.current = false;
     };
   }, [profileId]);
 
   // -------------------------------------------------------------------
-  // Recompute load curve whenever appliances change (client-side preview)
+  // Derive load curve from appliances.
+  // useMemo avoids a second render cycle (setState → re-render) and
+  // prevents the old effect pattern from creating a new array reference
+  // on every render and re-triggering itself.
   // -------------------------------------------------------------------
-  useEffect(() => {
-    setLoadCurve(buildLoadCurveClient(appliances));
-  }, [appliances]);
+  const loadCurve = useMemo(
+    () => buildLoadCurveClient(appliances),
+    [appliances],
+  );
 
   // -------------------------------------------------------------------
   // Step 1 → 2: fetch appliance templates for selected type
@@ -130,17 +118,21 @@ export function ProfileBuilder({ customerId, profileId, onSave, onCancel }) {
     setProfileType(type);
     setError(null);
 
-    // Don't re-fetch if already loaded for this type
-    if (loadedTypeRef.current === type) return;
+    // Don't overwrite appliances that are still being loaded from the server,
+    // or that are already correct for this type.
+    if (editLoadingRef.current || loadedTypeRef.current === type) return;
 
     try {
       const res = await fetch(`/api/profiles/templates/${type}`);
       if (!res.ok) throw new Error("Could not load appliance templates");
       const data = await res.json();
 
+      // Re-check after the await in case the edit-load effect resolved while
+      // we were waiting and already populated appliances with real data.
+      if (editLoadingRef.current || loadedTypeRef.current === type) return;
+
       setAppliances(
         (data.templates || []).map((t, i) => ({
-          // No id yet — these are template rows being copied into a new profile
           appliance_name: t.appliance_name,
           quantity: 1,
           watts: Number(t.watts),
@@ -206,12 +198,10 @@ export function ProfileBuilder({ customerId, profileId, onSave, onCancel }) {
     };
 
     try {
-      const url = profileId ? `/api/profiles/${profileId}` : "/api/profiles";
-      const method = profileId ? "PUT" : "POST";
-
-      // For edits, update profile header then appliances separately
       let result;
+
       if (profileId) {
+        // Edit: update profile header and appliances in parallel
         const [pRes, aRes] = await Promise.all([
           fetch(`/api/profiles/${profileId}`, {
             method: "PATCH",
@@ -227,6 +217,7 @@ export function ProfileBuilder({ customerId, profileId, onSave, onCancel }) {
         if (!pRes.ok || !aRes.ok) throw new Error("Failed to update profile");
         result = await pRes.json();
       } else {
+        // Create: single POST with full body
         const res = await fetch("/api/profiles", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -277,7 +268,7 @@ export function ProfileBuilder({ customerId, profileId, onSave, onCancel }) {
   // -------------------------------------------------------------------
   // Derived summary stats for Step 4
   // -------------------------------------------------------------------
-  const summary = (() => {
+  const summary = useMemo(() => {
     const totalWeekday = appliances.reduce(
       (acc, a) =>
         acc +
@@ -305,22 +296,22 @@ export function ProfileBuilder({ customerId, profileId, onSave, onCancel }) {
       criticalW: Math.round(criticalW),
       criticalItems,
     };
-  })();
+  }, [appliances]);
 
   // -------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------
   if (loadingEdit) {
     return (
-      <div className="pb-loading">
-        <div className="pb-spinner" />
+      <div className="flex items-center gap-2.5 py-8 px-6 text-(--text-secondary) text-sm">
+        <div className="inline-block w-5 h-5 rounded-full border-2 border-transparent border-t-current animate-[spin_0.65s_linear_infinite] motion-reduce:animate-none motion-reduce:border-current" />
         <span>Loading profile…</span>
       </div>
     );
   }
 
   return (
-    <div className="pb-root">
+    <div className="flex flex-col max-w-215 mx-auto pb-8">
       <StepNav
         steps={STEPS}
         current={step}
@@ -329,13 +320,21 @@ export function ProfileBuilder({ customerId, profileId, onSave, onCancel }) {
       />
 
       {error && (
-        <div className="pb-error" role="alert">
+        <div
+          className="flex items-center justify-between gap-3 mx-6 mb-4 py-2.5 px-3.5 rounded-lg bg-(--bg-danger,#fef2f2) border-[0.5px] border-(--border-danger,#fca5a5) text-[13px] text-(--text-danger,#dc2626)"
+          role="alert"
+        >
           <span>⚠ {error}</span>
-          <button onClick={() => setError(null)}>Dismiss</button>
+          <button
+            className="text-xs text-(--text-danger) bg-transparent border-0 cursor-pointer underline shrink-0"
+            onClick={() => setError(null)}
+          >
+            Dismiss
+          </button>
         </div>
       )}
 
-      <div className="pb-body">
+      <div className="px-4 sm:px-6">
         {step === 1 && (
           <StepType
             selected={profileType}

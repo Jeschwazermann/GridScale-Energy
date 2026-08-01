@@ -14,9 +14,11 @@ import {
   X,
   AlertCircle,
   Loader,
+  Zap,
 } from "lucide-react";
 import InstallerLayout from "../../layouts/installer";
 import ResultCard from "../../components/ResultCard";
+import { ProfileBuilder } from "../../components/profile/ProfileBuilder";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/useAuth";
 import { fetchSizing } from "../../services/installerApi";
@@ -87,19 +89,34 @@ function getApplianceEmoji(name = "") {
   return "⚡";
 }
 
+/* ─── Profile type labels / icons ────────────────────────────── */
+const PROFILE_TYPE_LABELS = {
+  residential: "Residential",
+  sme_office: "SME — Office",
+  sme_retail: "SME — Retail",
+  cold_room: "Cold Room",
+  clinic: "Clinic",
+  worship_centre: "Worship Centre",
+};
+
+const PROFILE_TYPE_ICONS = {
+  residential: "🏠",
+  sme_office: "🖥",
+  sme_retail: "🏪",
+  cold_room: "🧊",
+  clinic: "🏥",
+  worship_centre: "⛪",
+};
+
 /* ─── Tab definitions ────────────────────────────────────────── */
 const TABS = [
   { id: "assessment", label: "Assessment Results", icon: ClipboardList },
   { id: "sizing", label: "System Sizing", icon: Cpu },
+  { id: "profile", label: "Energy Profile", icon: Zap },
   { id: "quotation", label: "Quotation", icon: FileText },
 ];
 
-/* ─── EditCustomerModal ──────────────────────────────────────────
-   Lets an installer correct/complete a customer's location data
-   after creation — closes the gap for both manually-created
-   customers (which never collected lga/address) and lead-converted
-   customers (whose consumer-submitted address may be vague/missing).
-──────────────────────────────────────────────────────────────── */
+/* ─── EditCustomerModal ──────────────────────────────────────── */
 function EditCustomerModal({ customer, onClose, onSaved }) {
   const [form, setForm] = useState({
     name: customer.name ?? "",
@@ -117,22 +134,17 @@ function EditCustomerModal({ customer, onClose, onSaved }) {
     setForm((prev) => ({
       ...prev,
       [name]: value,
-      /* Reset LGA when state changes — a stale LGA from a previously
-         selected state shouldn't silently persist under a new one. */
       ...(name === "state" ? { lga: "" } : {}),
     }));
   };
 
   const handleSave = async () => {
     setError(null);
-
     if (!form.name.trim() || !form.phone.trim() || !form.state) {
       setError("Name, phone, and state are required.");
       return;
     }
-
     setSaving(true);
-
     const { data, error: err } = await supabase
       .from("customers")
       .update({
@@ -147,14 +159,11 @@ function EditCustomerModal({ customer, onClose, onSaved }) {
       .eq("id", customer.id)
       .select()
       .single();
-
     setSaving(false);
-
     if (err) {
       setError(err.message || "Failed to save changes.");
       return;
     }
-
     onSaved(data);
     onClose();
   };
@@ -193,7 +202,6 @@ function EditCustomerModal({ customer, onClose, onSaved }) {
               className={inp}
             />
           </div>
-
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
               Phone *
@@ -206,7 +214,6 @@ function EditCustomerModal({ customer, onClose, onSaved }) {
               className={inp}
             />
           </div>
-
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
               Email{" "}
@@ -222,7 +229,6 @@ function EditCustomerModal({ customer, onClose, onSaved }) {
               className={inp}
             />
           </div>
-
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
@@ -242,7 +248,6 @@ function EditCustomerModal({ customer, onClose, onSaved }) {
                 ))}
               </select>
             </div>
-
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
                 LGA{" "}
@@ -268,7 +273,6 @@ function EditCustomerModal({ customer, onClose, onSaved }) {
               </select>
             </div>
           </div>
-
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
               Address{" "}
@@ -285,7 +289,6 @@ function EditCustomerModal({ customer, onClose, onSaved }) {
               className={inp}
             />
           </div>
-
           {error && (
             <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
               {error}
@@ -319,6 +322,93 @@ function EditCustomerModal({ customer, onClose, onSaved }) {
   );
 }
 
+/* ─── ProfileCard ────────────────────────────────────────────── */
+function ProfileCard({ profile, onEdit }) {
+  const icon = PROFILE_TYPE_ICONS[profile.profile_type] ?? "⚡";
+  const label =
+    PROFILE_TYPE_LABELS[profile.profile_type] ?? profile.profile_type;
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-lg shrink-0">
+            {icon}
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-800">{label}</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {fmtDate(profile.created_at)}
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => onEdit(profile.id)}
+          className="text-gray-300 hover:text-teal-600 transition-colors shrink-0"
+          title="Edit profile"
+        >
+          <Pencil size={14} />
+        </button>
+      </div>
+
+      <div className="mt-4 grid grid-cols-3 gap-2">
+        <div className="bg-gray-50 rounded-xl px-3 py-2.5">
+          <p className="text-[11px] text-gray-400 mb-0.5">Daily load</p>
+          <p className="text-sm font-bold text-gray-800 font-mono">
+            {profile.total_daily_kwh_weekday ?? "—"}
+            <span className="text-[11px] font-normal text-gray-400 ml-1">
+              kWh
+            </span>
+          </p>
+        </div>
+        <div className="bg-gray-50 rounded-xl px-3 py-2.5">
+          <p className="text-[11px] text-gray-400 mb-0.5">Peak demand</p>
+          <p className="text-sm font-bold text-gray-800 font-mono">
+            {profile.peak_demand_watts
+              ? (profile.peak_demand_watts / 1000).toFixed(1)
+              : "—"}
+            <span className="text-[11px] font-normal text-gray-400 ml-1">
+              kW
+            </span>
+          </p>
+        </div>
+        <div className="bg-gray-50 rounded-xl px-3 py-2.5">
+          <p className="text-[11px] text-gray-400 mb-0.5">Grid hrs</p>
+          <p className="text-sm font-bold text-gray-800 font-mono">
+            {profile.grid_hours_weekday ?? "—"}
+            <span className="text-[11px] font-normal text-gray-400 ml-1">
+              h/day
+            </span>
+          </p>
+        </div>
+      </div>
+
+      {profile.has_critical_loads && profile.critical_load_watts > 0 && (
+        <div className="mt-3">
+          <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-full">
+            {(profile.critical_load_watts / 1000).toFixed(1)} kW critical load
+          </span>
+        </div>
+      )}
+
+      {profile.generator_fuel_spend_month && (
+        <p className="mt-2.5 text-xs text-gray-400">
+          Generator fuel:{" "}
+          <span className="font-semibold text-gray-600">
+            ₦{Number(profile.generator_fuel_spend_month).toLocaleString()}/month
+          </span>
+        </p>
+      )}
+
+      {profile.notes && (
+        <p className="mt-2 text-xs text-gray-400 line-clamp-2">
+          {profile.notes}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /* ─── CustomerDetail ─────────────────────────────────────────── */
 export default function CustomerDetail() {
   const { id } = useParams();
@@ -331,24 +421,21 @@ export default function CustomerDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  /* Edit modal */
   const [showEditModal, setShowEditModal] = useState(false);
 
-  /* Sizing */
   const [sizing, setSizing] = useState(null);
   const [sizingLoading, setSizingLoading] = useState(false);
   const [sizingError, setSizingError] = useState(null);
 
-  /* Status update */
   const [statusUpdating, setStatusUpdating] = useState(false);
 
-  /* ── Fetch customer + assessments ──
-     Depends on user?.id (stable string) instead of user (object
-     reference). Supabase fires onAuthStateChange on every token
-     refresh, which creates a new user object — causing this effect
-     to re-run even though the actual user hasn't changed. Using
-     user?.id means it only re-runs when the user ID itself changes
-     (i.e. a real sign-in/sign-out), not on token refreshes. */
+  /* ── Profile state ── */
+  const [profiles, setProfiles] = useState([]);
+  const [profilesLoading, setProfilesLoading] = useState(false);
+  const [showBuilder, setShowBuilder] = useState(false);
+  const [editProfileId, setEditProfileId] = useState(null);
+
+  /* ── Fetch customer + assessments ── */
   useEffect(() => {
     if (!user?.id || !id) return;
     let cancelled = false;
@@ -373,24 +460,65 @@ export default function CustomerDetail() {
       }
 
       setCustomer(data);
-
       const sorted = (data.assessments ?? []).sort(
         (a, b) => new Date(b.created_at) - new Date(a.created_at),
       );
       setAssessments(sorted);
       setSelectedIdx(0);
-
-      /* reset sizing state cleanly */
       setSizing(null);
       setSizingError(null);
-
       setLoading(false);
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [user?.id, id]); // ← was [user, id] — see comment above
+  }, [user?.id, id]);
+
+  /* ── Fetch profiles — lazy, on first visit to the profile tab ──
+     profilesFetchedRef guards against duplicate fetches.
+     fetchProfiles() is also called imperatively after save/edit
+     to refresh the list without re-mounting the whole page. */
+  const profilesFetchedRef = useRef(false);
+
+  const fetchProfiles = async () => {
+    if (!id) return;
+    setProfilesLoading(true);
+
+    const { data, error: err } = await supabase
+      .from("consumption_profiles")
+      .select(
+        `
+        id,
+        profile_type,
+        total_daily_kwh_weekday,
+        total_daily_kwh_weekend,
+        peak_demand_watts,
+        critical_load_watts,
+        has_critical_loads,
+        grid_hours_weekday,
+        grid_hours_weekend,
+        generator_fuel_spend_month,
+        notes,
+        created_at
+      `,
+      )
+      .eq("customer_id", id)
+      .order("created_at", { ascending: false });
+
+    setProfilesLoading(false);
+
+    if (!err) {
+      setProfiles(data ?? []);
+      profilesFetchedRef.current = true;
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "profile" && !profilesFetchedRef.current) {
+      fetchProfiles();
+    }
+  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Selected assessment ── */
   const selectedAssessment = assessments[selectedIdx] ?? null;
@@ -399,11 +527,7 @@ export default function CustomerDetail() {
   const lifespan = selectedAssessment?.settings?.lifespan ?? 25;
   const effectiveDailyKWh = assessmentResult?.energy?.effectiveDailyKWh ?? null;
 
-  /* ── Load sizing (freeze-on-first-compute) ──
-     If the selected assessment already has a frozen sizing_result,
-     use it directly — no network call, no drift if constants or the
-     customer's location change later. Otherwise compute it once via
-     fetchSizing and persist the result back onto the assessment row. */
+  /* ── Load sizing ── */
   const sizingFetchIdRef = useRef(0);
   const frozenSizing = selectedAssessment?.sizing_result ?? null;
   const displaySizing = frozenSizing ?? sizing;
@@ -429,17 +553,9 @@ export default function CustomerDetail() {
 
         if (cancelled || fetchId !== sizingFetchIdRef.current) return;
 
-        /* Show the computed result immediately — this must not
-           depend on the persist step below succeeding. */
         setSizing(data);
         setSizingLoading(false);
 
-        /* Freeze this result on the assessment row so it never
-           drifts if constants or the customer's location change
-           later. Non-fatal if this write fails — sizing still
-           displays fine this session via local state; it just won't
-           be frozen for next time, so it'll recompute on next visit
-           to this tab for this assessment. */
         const { error: persistErr } = await supabase
           .from("assessments")
           .update({ sizing_result: data })
@@ -488,6 +604,30 @@ export default function CustomerDetail() {
       .eq("installer_id", user.id);
     setCustomer((prev) => ({ ...prev, status: newStatus }));
     setStatusUpdating(false);
+  };
+
+  /* ── Profile builder handlers ── */
+  const handleOpenNewProfile = () => {
+    setEditProfileId(null);
+    setShowBuilder(true);
+  };
+
+  const handleEditProfile = (profileId) => {
+    setEditProfileId(profileId);
+    setShowBuilder(true);
+  };
+
+  const handleProfileSave = async () => {
+    setShowBuilder(false);
+    setEditProfileId(null);
+    // Reset the lazy-load guard so fetchProfiles runs fresh
+    profilesFetchedRef.current = false;
+    await fetchProfiles();
+  };
+
+  const handleProfileCancel = () => {
+    setShowBuilder(false);
+    setEditProfileId(null);
   };
 
   /* ── Render ── */
@@ -599,9 +739,7 @@ export default function CustomerDetail() {
                   value={customer.status ?? "new"}
                   disabled={statusUpdating}
                   onChange={(e) => updateStatus(e.target.value)}
-                  className={`appearance-none pl-3 pr-7 py-1.5 text-xs font-semibold rounded-full border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-500 transition ${
-                    STATUS_STYLES[customer.status] ?? STATUS_STYLES.new
-                  }`}
+                  className={`appearance-none pl-3 pr-7 py-1.5 text-xs font-semibold rounded-full border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-500 transition ${STATUS_STYLES[customer.status] ?? STATUS_STYLES.new}`}
                 >
                   {STATUSES.map(({ value, label }) => (
                     <option key={value} value={value}>
@@ -614,7 +752,6 @@ export default function CustomerDetail() {
                   className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-60"
                 />
               </div>
-
               <Link
                 to="/installer/new-assessment"
                 state={{ customerId: customer.id, customerName: customer.name }}
@@ -629,31 +766,30 @@ export default function CustomerDetail() {
             Added {fmtDate(customer.created_at)}
             {assessments.length > 0 &&
               ` · ${assessments.length} assessment${assessments.length !== 1 ? "s" : ""}`}
+            {profiles.length > 0 &&
+              ` · ${profiles.length} energy profile${profiles.length !== 1 ? "s" : ""}`}
           </p>
         </div>
 
         {/* ── Tabs ── */}
         <div className="flex gap-1 bg-white rounded-2xl border border-gray-100 shadow-sm p-1.5">
-          {TABS.map(({ id, label, icon: Icon }) => (
+          {TABS.map(({ id: tabId, label, icon: Icon }) => (
             <button
-              key={id}
-              onClick={() => setActiveTab(id)}
+              key={tabId}
+              onClick={() => setActiveTab(tabId)}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
-                activeTab === id
+                activeTab === tabId
                   ? "bg-teal-600 text-white shadow-sm"
                   : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"
               }`}
             >
-              <Icon size={15} strokeWidth={activeTab === id ? 2.2 : 1.8} />
+              <Icon size={15} strokeWidth={activeTab === tabId ? 2.2 : 1.8} />
               <span className="hidden sm:inline">{label}</span>
             </button>
           ))}
         </div>
 
-        {/* ── Tab panels — kept mounted with `hidden` to avoid
-             unmount/remount flicker and redundant re-fetches ── */}
-
-        {/* Assessment Results */}
+        {/* ── Assessment Results ── */}
         <div className={activeTab === "assessment" ? "" : "hidden"}>
           {assessments.length === 0 ? (
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-16 text-center">
@@ -667,10 +803,7 @@ export default function CustomerDetail() {
               </p>
               <Link
                 to="/installer/new-assessment"
-                state={{
-                  customerId: customer.id,
-                  customerName: customer.name,
-                }}
+                state={{ customerId: customer.id, customerName: customer.name }}
                 className="inline-flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-all"
               >
                 <Plus size={14} /> Run Assessment
@@ -738,7 +871,6 @@ export default function CustomerDetail() {
                   <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-5">
                     Appliances Entered
                   </p>
-
                   <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 mb-2 px-1">
                     <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-300">
                       Appliance
@@ -753,7 +885,6 @@ export default function CustomerDetail() {
                       Units
                     </span>
                   </div>
-
                   <div className="divide-y divide-gray-50">
                     {selectedAssessment.appliances.map((a, i) => (
                       <div
@@ -784,7 +915,6 @@ export default function CustomerDetail() {
                       </div>
                     ))}
                   </div>
-
                   <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
                     <span className="text-xs text-gray-400">
                       {selectedAssessment.appliances.length} appliance
@@ -806,7 +936,7 @@ export default function CustomerDetail() {
           )}
         </div>
 
-        {/* System Sizing */}
+        {/* ── System Sizing ── */}
         <div className={activeTab === "sizing" ? "" : "hidden"}>
           <div className="space-y-4">
             {!effectiveDailyKWh ? (
@@ -843,7 +973,6 @@ export default function CustomerDetail() {
                   <p className="text-teal-200 text-xs mt-1">
                     Includes 25% diversity buffer + 20% system loss allowance
                   </p>
-
                   {displaySizing.irradiance && (
                     <div className="flex items-center gap-2 mt-4 pt-4 border-t border-teal-500/30">
                       <span
@@ -943,7 +1072,133 @@ export default function CustomerDetail() {
           </div>
         </div>
 
-        {/* Quotation */}
+        {/* ── Energy Profile ── */}
+        <div className={activeTab === "profile" ? "" : "hidden"}>
+          {showBuilder ? (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              {/* Header strip — shows context and an escape hatch */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-0.5">
+                    {editProfileId
+                      ? "Edit energy profile"
+                      : "New energy profile"}
+                  </p>
+                  <p className="text-sm font-semibold text-gray-700">
+                    {customer.name}
+                  </p>
+                </div>
+                <button
+                  onClick={handleProfileCancel}
+                  className="text-gray-300 hover:text-gray-500 transition-colors"
+                  title="Discard and go back"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <ProfileBuilder
+                customerId={customer.id}
+                profileId={editProfileId}
+                onSave={handleProfileSave}
+                onCancel={handleProfileCancel}
+              />
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Header row */}
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-gray-700">
+                    Energy profiles
+                  </p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Capture how this customer uses energy. Profiles make sizing
+                    more accurate and comparisons credible.
+                  </p>
+                </div>
+                <button
+                  onClick={handleOpenNewProfile}
+                  className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-all shrink-0"
+                >
+                  <Plus size={13} /> Add profile
+                </button>
+              </div>
+
+              {/* Loading */}
+              {profilesLoading && (
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-10 flex items-center justify-center gap-3">
+                  <Loader size={18} className="text-amber-500 animate-spin" />
+                  <p className="text-sm text-gray-400">Loading profiles…</p>
+                </div>
+              )}
+
+              {/* Empty state */}
+              {!profilesLoading && profiles.length === 0 && (
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-16 text-center">
+                  <Zap size={36} className="text-gray-200 mx-auto mb-3" />
+                  <p className="text-sm font-semibold text-gray-400 mb-1">
+                    No energy profile yet
+                  </p>
+                  <p className="text-xs text-gray-400 mb-5 max-w-sm mx-auto">
+                    An energy profile captures what appliances this customer
+                    runs, when they run them, and how much they spend on fuel.
+                    It makes your solar recommendation specific, not generic.
+                  </p>
+                  <button
+                    onClick={handleOpenNewProfile}
+                    className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-all"
+                  >
+                    <Plus size={14} /> Capture energy profile
+                  </button>
+                </div>
+              )}
+
+              {/* Profile cards */}
+              {!profilesLoading && profiles.length > 0 && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {profiles.map((profile) => (
+                    <ProfileCard
+                      key={profile.id}
+                      profile={profile}
+                      onEdit={handleEditProfile}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* Nudge toward assessment when profile exists but no assessment */}
+              {!profilesLoading &&
+                profiles.length > 0 &&
+                assessments.length === 0 && (
+                  <div className="bg-amber-50 border border-amber-100 rounded-xl px-5 py-4 flex items-start gap-3">
+                    <Zap size={15} className="text-amber-600 shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-amber-800">
+                        Ready to size
+                      </p>
+                      <p className="text-xs text-amber-700 mt-0.5">
+                        You have an energy profile. Run an assessment to turn it
+                        into a system size and savings comparison.
+                      </p>
+                    </div>
+                    <Link
+                      to="/installer/new-assessment"
+                      state={{
+                        customerId: customer.id,
+                        customerName: customer.name,
+                      }}
+                      className="text-xs font-semibold text-amber-700 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors shrink-0"
+                    >
+                      Run assessment →
+                    </Link>
+                  </div>
+                )}
+            </div>
+          )}
+        </div>
+
+        {/* ── Quotation ── */}
         <div className={activeTab === "quotation" ? "" : "hidden"}>
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -966,7 +1221,6 @@ export default function CustomerDetail() {
                 <FileText size={15} /> Open Builder
               </Link>
             </div>
-
             {!selectedAssessment ? (
               <div className="mt-6 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-5 py-4 text-sm text-gray-500">
                 Run an assessment first to start building a quotation.
