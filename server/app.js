@@ -5,6 +5,7 @@ import calculatorRoutes from "./routes/calculatorRoute.js";
 import installerRoutes from "./routes/installerRoute.js";
 import leadRoutes from "./routes/leadRoute.js";
 import profileRoutes from "./routes/consumptionProfileRoute.js";
+import cashflowRoutes from "./routes/cashflowRoute.js";
 import logger from "./utils/logger.js";
 import errorHandler from "./middleware/errorHandler.js";
 import notFoundHandler from "./middleware/notFoundHandler.js";
@@ -28,6 +29,7 @@ app.use("/api", calculatorRoutes);
 app.use("/api/installer", installerRoutes);
 app.use("/api/leads", leadRoutes);
 app.use("/api/profiles", profileRoutes);
+app.use("/api/cashflow", cashflowRoutes);
 
 app.use(notFoundHandler);
 
