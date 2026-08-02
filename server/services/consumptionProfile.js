@@ -1,4 +1,4 @@
-import { supabase } from "../lib/supabase.js";
+import { supabaseAdmin } from "../lib/supabase.js";
 import { AppError } from "../utils/AppError.js";
 import { logger } from "../utils/logger.js";
 
@@ -13,7 +13,7 @@ import { logger } from "../utils/logger.js";
  */
 
 export async function createProfile(profileData, appliances, installerId) {
-  const { data: profile, error: profileErr } = await supabase
+  const { data: profile, error: profileErr } = await supabaseAdmin
     .from("consumption_profiles")
     .insert({
       ...profileData,
@@ -38,7 +38,7 @@ export async function createProfile(profileData, appliances, installerId) {
       sort_order: a.sort_order ?? i,
     }));
 
-    const { error: appErr } = await supabase
+    const { error: appErr } = await supabaseAdmin
       .from("profile_appliances")
       .insert(rows);
 
@@ -56,7 +56,7 @@ export async function createProfile(profileData, appliances, installerId) {
   }
 
   // Fetch the computed load curve (trigger has already run by now)
-  const { data: updated, error: fetchErr } = await supabase
+  const { data: updated, error: fetchErr } = await supabaseAdmin
     .from("consumption_profiles")
     .select(
       "load_curve_24h, total_daily_kwh_weekday, total_daily_kwh_weekend, peak_demand_watts, critical_load_watts",
