@@ -3,9 +3,7 @@ import { Chart, registerables } from "chart.js";
 
 Chart.register(...registerables);
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+//helpers
 
 const fmtNaira = (n) => {
   if (Math.abs(n) >= 1_000_000_000)
@@ -110,10 +108,8 @@ function LegendItem({ color, label, dashed = false }) {
 // ScenarioStrip
 // ---------------------------------------------------------------------------
 
-function ScenarioStrip({ scenarios, currentCrossover }) {
+function ScenarioStrip({ scenarios }) {
   if (!scenarios || scenarios.length === 0) return null;
-
-  const current = scenarios.find((s) => s.label === "Current");
 
   return (
     <div className="mt-4 pt-4 border-t border-gray-100">
@@ -172,7 +168,7 @@ function EscalationSlider({ value, onChange }) {
         className="flex-1 accent-amber-500"
         aria-label="Diesel price escalation rate"
       />
-      <span className="text-xs font-semibold font-mono text-gray-700 min-w-[36px] text-right">
+      <span className="text-xs font-semibold font-mono text-gray-700 min-w-9 text-right">
         {value}%/yr
       </span>
     </div>
@@ -474,7 +470,9 @@ export function CashflowChart({
         chartRef.current = null;
       }
     };
-  }, [projection]); // Rebuild only when projection changes, not escalation
+  }, [projection]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Intentional: only rebuild canvas on new projection.
+  // Escalation changes are handled by the live-update effect below.
 
   // Live-update chart data when escalation slider changes
   useEffect(() => {
@@ -572,12 +570,7 @@ export function CashflowChart({
       <EscalationSlider value={escalation} onChange={setEscalation} />
 
       {/* Scenario strip */}
-      {showScenarios && scenarios && (
-        <ScenarioStrip
-          scenarios={scenarios}
-          currentCrossover={summary.crossoverYear}
-        />
-      )}
+      {showScenarios && scenarios && <ScenarioStrip scenarios={scenarios} />}
 
       {/* Assumptions panel */}
       <AssumptionsPanel meta={meta} />

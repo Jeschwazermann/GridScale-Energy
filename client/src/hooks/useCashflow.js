@@ -1,22 +1,3 @@
-/**
- * useCashflow.js
- * GridScale Africa
- *
- * Manages cashflow projection state for a given assessment.
- * Follows the same frozen-result pattern as sizing_result:
- *   1. Check if assessment already has cashflow_result frozen
- *   2. If yes, use it — no API call
- *   3. If no, POST to /api/cashflow/assessment/:id to compute + freeze
- *
- * Also fetches scenarios (diesel price sensitivity) in parallel.
- *
- * Usage:
- *   const { projection, scenarios, loading, error, recompute } =
- *     useCashflow(assessmentId, frozenResult);
- *
- *   recompute(financing) — triggers a fresh compute with optional loan params
- */
-
 import { useState, useEffect, useRef, useCallback } from "react";
 
 export function useCashflow(assessmentId, frozenResult = null) {
@@ -61,7 +42,6 @@ export function useCashflow(assessmentId, frozenResult = null) {
         const { projection: proj } = await projRes.json();
         setProjection(proj);
 
-        // Scenarios are non-fatal — don't throw if they fail
         if (scenRes.ok) {
           const { scenarios: sc } = await scenRes.json();
           setScenarios(sc);
@@ -83,32 +63,38 @@ export function useCashflow(assessmentId, frozenResult = null) {
     [assessmentId],
   );
 
-  // On mount: use frozen result if available, otherwise compute
   useEffect(() => {
-    if (frozenResult) {
-      setProjection(frozenResult);
-      // Still fetch scenarios even if projection is frozen
-      fetch(`/api/cashflow/scenarios/${assessmentId}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((data) => data && setScenarios(data.scenarios))
-        .catch(() => {});
-      return;
-    }
+    if (!assessmentId) return;
 
-    if (assessmentId) {
-      compute();
-    }
+    let cancelled = false;
+
+    const run = async () => {
+      if (frozenResult) {
+        // projection already seeded via useState — just fetch scenarios
+        try {
+          const r = await fetch(`/api/cashflow/scenarios/${assessmentId}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          });
+          if (!cancelled && r.ok) {
+            const data = await r.json();
+            if (!cancelled) setScenarios(data.scenarios);
+          }
+        } catch {
+          // scenarios are non-fatal
+        }
+      } else {
+        await compute();
+      }
+    };
+
+    run();
+
+    return () => {
+      cancelled = true;
+    };
   }, [assessmentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return {
-    projection,
-    scenarios,
-    loading,
-    error,
-    recompute: compute,
-  };
+  return { projection, scenarios, loading, error, recompute: compute };
 }
