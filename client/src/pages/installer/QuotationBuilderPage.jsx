@@ -19,6 +19,7 @@ import {
   Check,
   Sparkles,
 } from "lucide-react";
+//import { FinancingPanel } from "../../components/installer/FinancingPanel";
 import InstallerLayout from "../../layouts/installer";
 import { useAuth } from "../../contexts/useAuth";
 import { supabase } from "../../lib/supabase";
@@ -191,7 +192,7 @@ function ComponentCatalogue({ lineItems, onAdd, onAddCustom }) {
                     className={`
                       inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border
                       text-xs font-semibold transition-all duration-150
-                      max-w-full text-left break-words
+                      max-w-full text-left wrap-break-word
                       ${
                         isAdded
                           ? `${activeBg} ${border} ${color}`
@@ -251,6 +252,9 @@ const QuotationBuilderPage = () => {
   const [validityDate, setValidityDate] = useState("");
   const [savingQuote, setSavingQuote] = useState(false);
   const [quoteSaved, setQuoteSaved] = useState(false);
+  // //const [financingTerms, setFinancingTerms] = useState(
+  //   quotation?.financing_terms ?? null, // pre-populate if editing an existing quote
+  // );
 
   const [sizing, setSizing] = useState(null);
 

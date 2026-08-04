@@ -19,9 +19,11 @@ import {
 import InstallerLayout from "../../layouts/installer";
 import ResultCard from "../../components/ResultCard";
 import { ProfileBuilder } from "../../components/profile/ProfileBuilder";
+import { CashflowChart } from "../../components/installer/CashflowChart";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/useAuth";
 import { fetchSizing } from "../../services/installerApi";
+import { computeCashflow, computeScenarios } from "../../services/installerApi";
 import { NIGERIA_STATES, NIGERIA_LGAS } from "../../constants/nigerianData";
 
 /* ─── Status config ──────────────────────────────────────────── */
@@ -527,6 +529,11 @@ export default function CustomerDetail() {
   const lifespan = selectedAssessment?.settings?.lifespan ?? 25;
   const effectiveDailyKWh = assessmentResult?.energy?.effectiveDailyKWh ?? null;
 
+  const [cashflowProjection, setCashflowProjection] = useState(null);
+  const [cashflowScenarios, setCashflowScenarios] = useState(null);
+  const [cashflowLoading, setCashflowLoading] = useState(false);
+  const [cashflowError, setCashflowError] = useState(null);
+  const cashflowFetchIdRef = useRef(0);
   /* ── Load sizing ── */
   const sizingFetchIdRef = useRef(0);
   const frozenSizing = selectedAssessment?.sizing_result ?? null;
@@ -593,6 +600,92 @@ export default function CustomerDetail() {
     customer?.lga,
     customer?.state,
   ]);
+
+  /* ── Cashflow projection ──
+     If a frozen result is already stored on the assessment, use it
+     directly as a derived value — no effect needed for that path.
+     The effect below only runs for the async fetch when no frozen
+     result exists yet.                                             */
+  const frozenCashflow = selectedAssessment?.cashflow_result ?? null;
+  const displayCashflow = frozenCashflow ?? cashflowProjection;
+
+  /* ── Load cashflow projection (async fetch path only) ──
+   Only triggers when the sizing tab is active, sizing is available,
+   and no frozen result exists on the current assessment.           */
+  useEffect(() => {
+    if (activeTab !== "sizing") return;
+    if (!selectedAssessment?.id) return;
+    if (!displaySizing) return;
+    if (frozenCashflow) {
+      // Frozen result is available — fetch scenarios only (no setState for projection)
+      let cancelled = false;
+      fetch(`/api/cashflow/scenarios/${selectedAssessment.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (!cancelled && data) setCashflowScenarios(data.scenarios);
+        })
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    let cancelled = false;
+    const fetchId = ++cashflowFetchIdRef.current;
+
+    (async () => {
+      setCashflowLoading(true);
+      setCashflowError(null);
+
+      try {
+        const [projRes, scenRes] = await Promise.allSettled([
+          computeCashflow(selectedAssessment.id, { persist: true }),
+          computeScenarios(selectedAssessment.id, {}),
+        ]);
+
+        if (cancelled || fetchId !== cashflowFetchIdRef.current) return;
+
+        if (projRes.status === "rejected") {
+          const errMsg =
+            projRes.reason?.response?.data?.error ||
+            projRes.reason?.message ||
+            "Cashflow projection failed";
+          throw new Error(errMsg);
+        }
+
+        const projection = projRes.value.data.projection;
+        setCashflowProjection(projection);
+
+        setAssessments((prev) =>
+          prev.map((a) =>
+            a.id === selectedAssessment.id
+              ? { ...a, cashflow_result: projection }
+              : a,
+          ),
+        );
+
+        if (scenRes.status === "fulfilled") {
+          setCashflowScenarios(scenRes.value.data.scenarios);
+        }
+      } catch (err) {
+        if (!cancelled && fetchId === cashflowFetchIdRef.current) {
+          setCashflowError(err.message);
+        }
+      } finally {
+        if (!cancelled && fetchId === cashflowFetchIdRef.current) {
+          setCashflowLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, selectedAssessment?.id, frozenCashflow, displaySizing]);
 
   /* ── Update status ── */
   const updateStatus = async (newStatus) => {
@@ -821,6 +914,9 @@ export default function CustomerDetail() {
                     onChange={(e) => {
                       setSelectedIdx(Number(e.target.value));
                       setSizing(null);
+                      setCashflowProjection(null);
+                      setCashflowScenarios(null);
+                      setCashflowError(null);
                     }}
                     className="border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
                   >
@@ -1037,26 +1133,35 @@ export default function CustomerDetail() {
 
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5">
                   <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3">
-                    Estimated CAPEX Range
+                    Estimated CAPEX
                   </p>
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-display font-extrabold text-3xl text-gray-900">
-                        {displaySizing.capex.min >= 1_000_000
-                          ? `₦${(displaySizing.capex.min / 1_000_000).toFixed(1)}M`
-                          : `₦${(displaySizing.capex.min / 1_000).toFixed(0)}K`}
-                        <span className="text-gray-300 font-normal mx-2">
-                          {displaySizing.capex.max ? "—" : "and above"}
-                        </span>
-                        {displaySizing.capex.max
-                          ? displaySizing.capex.max >= 1_000_000
-                            ? `₦${(displaySizing.capex.max / 1_000_000).toFixed(1)}M`
-                            : `₦${(displaySizing.capex.max / 1_000).toFixed(0)}K`
-                          : ""}
+                        {displaySizing.estimatedCapex.total >= 1_000_000
+                          ? `₦${(displaySizing.estimatedCapex.total / 1_000_000).toFixed(1)}M`
+                          : `₦${(displaySizing.estimatedCapex.total / 1_000).toFixed(0)}K`}
                       </p>
                       <p className="text-xs text-gray-400 mt-1">
-                        {displaySizing.capex.tier} system · Nigerian market
-                        pricing
+                        Panels ₦
+                        {(
+                          displaySizing.estimatedCapex.panelCost / 1_000
+                        ).toFixed(0)}
+                        K{" · "}Battery ₦
+                        {(
+                          displaySizing.estimatedCapex.batteryCost / 1_000
+                        ).toFixed(0)}
+                        K{" · "}Inverter ₦
+                        {(
+                          displaySizing.estimatedCapex.inverterCost / 1_000
+                        ).toFixed(0)}
+                        K{" · "}BOS + install ₦
+                        {(
+                          (displaySizing.estimatedCapex.bosCost +
+                            displaySizing.estimatedCapex.installationCost) /
+                          1_000
+                        ).toFixed(0)}
+                        K
                       </p>
                     </div>
                     <button
@@ -1067,6 +1172,31 @@ export default function CustomerDetail() {
                     </button>
                   </div>
                 </div>
+                {cashflowLoading && (
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5 flex items-center justify-center gap-3">
+                    <Loader size={18} className="text-teal-600 animate-spin" />
+                    <p className="text-sm text-gray-400">
+                      Computing cashflow projection…
+                    </p>
+                  </div>
+                )}
+
+                {cashflowError && (
+                  <div className="bg-amber-50 border border-amber-100 rounded-xl px-5 py-4 flex items-center gap-3">
+                    <AlertCircle
+                      size={15}
+                      className="text-amber-600 shrink-0"
+                    />
+                    <p className="text-sm text-amber-700">{cashflowError}</p>
+                  </div>
+                )}
+
+                {cashflowProjection && !cashflowLoading && (
+                  <CashflowChart
+                    projection={displayCashflow}
+                    scenarios={cashflowScenarios}
+                  />
+                )}
               </>
             ) : null}
           </div>

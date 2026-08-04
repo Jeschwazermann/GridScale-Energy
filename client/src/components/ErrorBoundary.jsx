@@ -12,9 +12,26 @@ export default class ErrorBoundary extends Component {
     return { hasError: true, error };
   }
 
-  componentDidCatch(error, info) {
+  componentDidCatch(error, errorInfo) {
     /* Log to console in dev — swap for a real logger (Sentry etc.) in prod */
-    console.error("[ErrorBoundary] Caught error:", error, info.componentStack);
+    console.error(
+      "[ErrorBoundary] Caught error:",
+      error,
+      errorInfo.componentStack,
+    );
+
+    /* Report to server — swallow any fetch error so we don't crash the crash handler */
+    const apiBase = import.meta.env.VITE_API_URL ?? "";
+    fetch(`${apiBase}/api/log/client-error`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: error.message,
+        stack: error.stack,
+        componentStack: errorInfo.componentStack,
+        url: window.location.href,
+      }),
+    }).catch(() => {});
   }
 
   handleReset = () => {
