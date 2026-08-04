@@ -23,6 +23,7 @@ import { CashflowChart } from "../../components/installer/CashflowChart";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/useAuth";
 import { fetchSizing } from "../../services/installerApi";
+import { computeCashflow, computeScenarios } from "../../services/installerApi";
 import { NIGERIA_STATES, NIGERIA_LGAS } from "../../constants/nigerianData";
 
 /* ─── Status config ──────────────────────────────────────────── */
@@ -641,27 +642,22 @@ export default function CustomerDetail() {
       setCashflowError(null);
 
       try {
-        const [projRes, scenRes] = await Promise.all([
-          fetch(`/api/cashflow/assessment/${selectedAssessment.id}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ persist: true }),
-          }),
-          fetch(`/api/cashflow/scenarios/${selectedAssessment.id}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({}),
-          }),
+        const [projRes, scenRes] = await Promise.allSettled([
+          computeCashflow(selectedAssessment.id, { persist: true }),
+          computeScenarios(selectedAssessment.id, {}),
         ]);
 
         if (cancelled || fetchId !== cashflowFetchIdRef.current) return;
 
-        if (!projRes.ok) {
-          const err = await projRes.json().catch(() => ({}));
-          throw new Error(err.error || "Cashflow projection failed");
+        if (projRes.status === "rejected") {
+          const errMsg =
+            projRes.reason?.response?.data?.error ||
+            projRes.reason?.message ||
+            "Cashflow projection failed";
+          throw new Error(errMsg);
         }
 
-        const { projection } = await projRes.json();
+        const projection = projRes.value.data.projection;
         setCashflowProjection(projection);
 
         setAssessments((prev) =>
@@ -672,9 +668,8 @@ export default function CustomerDetail() {
           ),
         );
 
-        if (scenRes.ok) {
-          const { scenarios } = await scenRes.json();
-          setCashflowScenarios(scenarios);
+        if (scenRes.status === "fulfilled") {
+          setCashflowScenarios(scenRes.value.data.scenarios);
         }
       } catch (err) {
         if (!cancelled && fetchId === cashflowFetchIdRef.current) {
@@ -1138,26 +1133,35 @@ export default function CustomerDetail() {
 
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5">
                   <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3">
-                    Estimated CAPEX Range
+                    Estimated CAPEX
                   </p>
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-display font-extrabold text-3xl text-gray-900">
-                        {displaySizing.capex.min >= 1_000_000
-                          ? `₦${(displaySizing.capex.min / 1_000_000).toFixed(1)}M`
-                          : `₦${(displaySizing.capex.min / 1_000).toFixed(0)}K`}
-                        <span className="text-gray-300 font-normal mx-2">
-                          {displaySizing.capex.max ? "—" : "and above"}
-                        </span>
-                        {displaySizing.capex.max
-                          ? displaySizing.capex.max >= 1_000_000
-                            ? `₦${(displaySizing.capex.max / 1_000_000).toFixed(1)}M`
-                            : `₦${(displaySizing.capex.max / 1_000).toFixed(0)}K`
-                          : ""}
+                        {displaySizing.estimatedCapex.total >= 1_000_000
+                          ? `₦${(displaySizing.estimatedCapex.total / 1_000_000).toFixed(1)}M`
+                          : `₦${(displaySizing.estimatedCapex.total / 1_000).toFixed(0)}K`}
                       </p>
                       <p className="text-xs text-gray-400 mt-1">
-                        {displaySizing.capex.tier} system · Nigerian market
-                        pricing
+                        Panels ₦
+                        {(
+                          displaySizing.estimatedCapex.panelCost / 1_000
+                        ).toFixed(0)}
+                        K{" · "}Battery ₦
+                        {(
+                          displaySizing.estimatedCapex.batteryCost / 1_000
+                        ).toFixed(0)}
+                        K{" · "}Inverter ₦
+                        {(
+                          displaySizing.estimatedCapex.inverterCost / 1_000
+                        ).toFixed(0)}
+                        K{" · "}BOS + install ₦
+                        {(
+                          (displaySizing.estimatedCapex.bosCost +
+                            displaySizing.estimatedCapex.installationCost) /
+                          1_000
+                        ).toFixed(0)}
+                        K
                       </p>
                     </div>
                     <button

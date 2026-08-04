@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { computeCashflow, computeScenarios } from "../services/installerApi";
 
 export function useCashflow(assessmentId, frozenResult = null) {
   const [projection, setProjection] = useState(frozenResult ?? null);
@@ -12,53 +13,42 @@ export function useCashflow(assessmentId, frozenResult = null) {
     async (financing = null, { persist = true } = {}) => {
       if (!assessmentId) return;
 
-      let cancelled = false;
       const fetchId = ++fetchIdRef.current;
 
       setLoading(true);
       setError(null);
 
       try {
-        const [projRes, scenRes] = await Promise.all([
-          fetch(`/api/cashflow/assessment/${assessmentId}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ financing, persist }),
-          }),
-          fetch(`/api/cashflow/scenarios/${assessmentId}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({}),
-          }),
+        const [projRes, scenRes] = await Promise.allSettled([
+          computeCashflow(assessmentId, { financing, persist }),
+          computeScenarios(assessmentId, {}),
         ]);
 
-        if (cancelled || fetchId !== fetchIdRef.current) return;
+        if (fetchId !== fetchIdRef.current) return;
 
-        if (!projRes.ok) {
-          const err = await projRes.json().catch(() => ({}));
-          throw new Error(err.error || `Projection failed (${projRes.status})`);
+        if (projRes.status === "rejected") {
+          throw new Error(
+            projRes.reason?.response?.data?.error ||
+              projRes.reason?.message ||
+              "Projection failed",
+          );
         }
 
-        const { projection: proj } = await projRes.json();
-        setProjection(proj);
+        setProjection(projRes.value.data.projection);
 
-        if (scenRes.ok) {
-          const { scenarios: sc } = await scenRes.json();
-          setScenarios(sc);
+        if (scenRes.status === "fulfilled") {
+          setScenarios(scenRes.value.data.scenarios);
         }
+        // scenarios failure is non-fatal — just leave as null
       } catch (err) {
-        if (!cancelled && fetchId === fetchIdRef.current) {
+        if (fetchId === fetchIdRef.current) {
           setError(err.message);
         }
       } finally {
-        if (!cancelled && fetchId === fetchIdRef.current) {
+        if (fetchId === fetchIdRef.current) {
           setLoading(false);
         }
       }
-
-      return () => {
-        cancelled = true;
-      };
     },
     [assessmentId],
   );
@@ -70,22 +60,15 @@ export function useCashflow(assessmentId, frozenResult = null) {
 
     const run = async () => {
       if (frozenResult) {
-        // projection already seeded via useState — just fetch scenarios
+        // projection already seeded — just fetch scenarios
         try {
-          const r = await fetch(`/api/cashflow/scenarios/${assessmentId}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({}),
-          });
-          if (!cancelled && r.ok) {
-            const data = await r.json();
-            if (!cancelled) setScenarios(data.scenarios);
-          }
+          const res = await computeScenarios(assessmentId, {});
+          if (!cancelled) setScenarios(res.data.scenarios);
         } catch {
-          // scenarios are non-fatal
+          // non-fatal
         }
       } else {
-        await compute();
+        if (!cancelled) await compute();
       }
     };
 

@@ -53,3 +53,13 @@ export const uploadLogo = (payload) =>
 export const claimLead = (id) => api.put(`/api/installer/leads/${id}/claim`);
 export const convertLead = (id) =>
   api.put(`/api/installer/leads/${id}/convert`);
+
+/* ── Cashflow ── */
+export const computeCashflow = (assessmentId, payload = {}) =>
+  api.post(`/api/cashflow/assessment/${assessmentId}`, payload);
+
+export const fetchCashflowProjection = (assessmentId) =>
+  api.get(`/api/cashflow/assessment/${assessmentId}`);
+
+export const computeScenarios = (assessmentId, payload = {}) =>
+  api.post(`/api/cashflow/scenarios/${assessmentId}`, payload);
