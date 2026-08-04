@@ -14,6 +14,7 @@ export const requireAuth = async (req, res, next) => {
     data: { user },
     error,
   } = await supabaseAdmin.auth.getUser(token);
+  if (error) console.error("[requireAuth] supabase error:", error.message);
 
   if (error || !user) {
     // error.message gives the real Supabase reason (e.g. "Invalid API key",
