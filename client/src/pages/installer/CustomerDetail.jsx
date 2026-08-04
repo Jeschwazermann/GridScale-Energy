@@ -615,25 +615,23 @@ export default function CustomerDetail() {
   useEffect(() => {
     if (activeTab !== "sizing") return;
     if (!selectedAssessment?.id) return;
-    if (!displaySizing) return;
+    if (!displaySizing) return; // wait until sizing exists
+    if (!user?.id) return;
+
+    // ── frozen path: projection already on the assessment row ──
     if (frozenCashflow) {
-      // Frozen result is available — fetch scenarios only (no setState for projection)
       let cancelled = false;
-      fetch(`/api/cashflow/scenarios/${selectedAssessment.id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((data) => {
-          if (!cancelled && data) setCashflowScenarios(data.scenarios);
+      computeScenarios(selectedAssessment.id, {})
+        .then((res) => {
+          if (!cancelled) setCashflowScenarios(res.data.scenarios);
         })
-        .catch(() => {});
+        .catch(() => {}); // scenarios are non-fatal
       return () => {
         cancelled = true;
       };
     }
 
+    // ── live path: compute + persist ──
     let cancelled = false;
     const fetchId = ++cashflowFetchIdRef.current;
 
@@ -650,11 +648,11 @@ export default function CustomerDetail() {
         if (cancelled || fetchId !== cashflowFetchIdRef.current) return;
 
         if (projRes.status === "rejected") {
-          const errMsg =
+          throw new Error(
             projRes.reason?.response?.data?.error ||
-            projRes.reason?.message ||
-            "Cashflow projection failed";
-          throw new Error(errMsg);
+              projRes.reason?.message ||
+              "Cashflow projection failed",
+          );
         }
 
         const projection = projRes.value.data.projection;
@@ -1190,8 +1188,7 @@ export default function CustomerDetail() {
                     <p className="text-sm text-amber-700">{cashflowError}</p>
                   </div>
                 )}
-
-                {cashflowProjection && !cashflowLoading && (
+                {displayCashflow && !cashflowLoading && (
                   <CashflowChart
                     projection={displayCashflow}
                     scenarios={cashflowScenarios}

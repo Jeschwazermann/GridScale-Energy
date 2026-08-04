@@ -10,6 +10,9 @@ import { requireAuth } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
+// ── Public — no auth needed ──
+router.get("/defaults", getCashflowDefaults);
+
 router.use(requireAuth);
 
 // ---------------------------------------------------------------------------
