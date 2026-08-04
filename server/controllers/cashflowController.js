@@ -15,9 +15,15 @@ export const createAssessmentProjection = async (req, res, next) => {
 
     const { data: assessment, error: fetchErr } = await supabaseAdmin
       .from("assessments")
-      .select("id, results, result, settings, sizing_result, customer_id")
+      .select("id, results, settings, sizing_result, customer_id")
       .eq("id", assessmentId)
       .single();
+
+    console.log("[cashflow] assessment fetch:", {
+      found: !!assessment,
+      error: fetchErr?.message,
+      code: fetchErr?.code,
+    });
 
     if (fetchErr || !assessment) {
       throw new AppError("Assessment not found", 404);
@@ -101,7 +107,7 @@ export const getScenarioCrossovers = async (req, res, next) => {
   try {
     const { data: assessment, error } = await supabaseAdmin
       .from("assessments")
-      .select("results, result, settings, sizing_result")
+      .select("results, settings, sizing_result")
       .eq("id", req.params.assessmentId)
       .single();
 
