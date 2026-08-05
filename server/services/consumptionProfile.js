@@ -1,17 +1,12 @@
-import { supabaseAdmin } from "../lib/supabase.js";
+import { supabaseAdmin, supabaseForUser } from "../lib/supabase.js";
 import { AppError } from "../utils/AppError.js";
 import { logger } from "../utils/logger.js";
 
 /**
  * Create a new consumption profile for a customer.
- * Also bulk-inserts the appliance rows in the same transaction.
- *
- * @param {object} profileData  - Fields from consumption_profiles (minus id, computed cols)
- * @param {Array}  appliances   - Array of profile_appliances rows (minus id, profile_id)
- * @param {string} installerId  - auth.uid() of the calling installer
- * @returns {object}            - { profile, appliances, loadCurve }
+ * Uses supabaseAdmin — installer_id is stamped server-side and RLS
+ * would otherwise block the insert before we can set it.
  */
-
 export async function createProfile(profileData, appliances, installerId) {
   const { data: profile, error: profileErr } = await supabaseAdmin
     .from("consumption_profiles")
@@ -30,7 +25,6 @@ export async function createProfile(profileData, appliances, installerId) {
     throw new AppError(profileErr.message, 500);
   }
 
-  // Bulk-insert appliances
   if (appliances && appliances.length > 0) {
     const rows = appliances.map((a, i) => ({
       ...a,
@@ -47,7 +41,6 @@ export async function createProfile(profileData, appliances, installerId) {
         error: appErr,
         profileId: profile.id,
       });
-      // Profile exists but appliances failed — still throw so the UI can retry
       throw new AppError(
         `Profile created but appliances failed: ${appErr.message}`,
         500,
@@ -55,7 +48,6 @@ export async function createProfile(profileData, appliances, installerId) {
     }
   }
 
-  // Fetch the computed load curve (trigger has already run by now)
   const { data: updated, error: fetchErr } = await supabaseAdmin
     .from("consumption_profiles")
     .select(
@@ -86,10 +78,12 @@ export async function createProfile(profileData, appliances, installerId) {
 
 /**
  * Fetch a single profile with all its appliances.
- * Uses the get_profile_with_appliances RPC for a single round trip.
+ * supabaseForUser — RLS scopes to the calling installer's data.
  */
-export async function getProfileWithAppliances(profileId) {
-  const { data, error } = await supabase.rpc("get_profile_with_appliances", {
+export async function getProfileWithAppliances(profileId, token) {
+  const client = supabaseForUser(token);
+
+  const { data, error } = await client.rpc("get_profile_with_appliances", {
     p_profile_id: profileId,
   });
 
@@ -104,10 +98,12 @@ export async function getProfileWithAppliances(profileId) {
 
 /**
  * List all profiles for a customer, newest first.
- * Returns summary fields only (not full appliance list).
+ * supabaseForUser — RLS ensures installers only see their own customers.
  */
-export async function getProfilesByCustomer(customerId) {
-  const { data, error } = await supabase
+export async function getProfilesByCustomer(customerId, token) {
+  const client = supabaseForUser(token);
+
+  const { data, error } = await client
     .from("consumption_profiles")
     .select(
       `
@@ -138,10 +134,12 @@ export async function getProfilesByCustomer(customerId) {
 
 /**
  * Update profile header fields (not appliances).
- * Appliance changes go through updateProfileAppliances.
+ * supabaseForUser — RLS prevents cross-installer edits.
  */
-export async function updateProfile(profileId, updates) {
-  const { data, error } = await supabase
+export async function updateProfile(profileId, updates, token) {
+  const client = supabaseForUser(token);
+
+  const { data, error } = await client
     .from("consumption_profiles")
     .update(updates)
     .eq("id", profileId)
@@ -158,12 +156,29 @@ export async function updateProfile(profileId, updates) {
 
 /**
  * Replace all appliances for a profile.
- * Delete-then-insert is intentional — the trigger recomputes the curve
- * after the inserts, so we get one final consistent state.
+ * supabaseForUser — RLS prevents cross-installer writes.
+ * Delete uses supabaseAdmin to avoid RLS blocking the delete on
+ * profile_appliances (child table may not have installer_id directly).
+ * Insert uses supabaseAdmin for the same reason — profile ownership
+ * is already verified by the parent row's RLS on consumption_profiles.
  */
-export async function updateProfileAppliances(profileId, appliances) {
-  // Delete existing
-  const { error: delErr } = await supabase
+export async function updateProfileAppliances(profileId, appliances, token) {
+  // Ownership check via user-scoped client before we touch anything
+  const client = supabaseForUser(token);
+  const { error: ownerErr } = await client
+    .from("consumption_profiles")
+    .select("id")
+    .eq("id", profileId)
+    .single();
+
+  if (ownerErr) {
+    if (ownerErr.code === "PGRST116")
+      throw new AppError("Profile not found", 404);
+    throw new AppError("Unauthorised", 403);
+  }
+
+  // Safe to proceed with admin client for child-table ops
+  const { error: delErr } = await supabaseAdmin
     .from("profile_appliances")
     .delete()
     .eq("profile_id", profileId);
@@ -176,18 +191,15 @@ export async function updateProfileAppliances(profileId, appliances) {
     throw new AppError(delErr.message, 500);
   }
 
-  if (!appliances || appliances.length === 0) {
-    return [];
-  }
+  if (!appliances || appliances.length === 0) return [];
 
-  // Re-insert with sort_order
   const rows = appliances.map((a, i) => ({
     ...a,
     profile_id: profileId,
     sort_order: a.sort_order ?? i,
   }));
 
-  const { data, error: insErr } = await supabase
+  const { data, error: insErr } = await supabaseAdmin
     .from("profile_appliances")
     .insert(rows)
     .select();
@@ -209,9 +221,24 @@ export async function updateProfileAppliances(profileId, appliances) {
 
 /**
  * Delete a profile (cascades to profile_appliances via FK).
+ * Ownership check via user-scoped client; delete via admin to
+ * avoid FK/cascade RLS complications on the child table.
  */
-export async function deleteProfile(profileId) {
-  const { error } = await supabase
+export async function deleteProfile(profileId, token) {
+  const client = supabaseForUser(token);
+  const { error: ownerErr } = await client
+    .from("consumption_profiles")
+    .select("id")
+    .eq("id", profileId)
+    .single();
+
+  if (ownerErr) {
+    if (ownerErr.code === "PGRST116")
+      throw new AppError("Profile not found", 404);
+    throw new AppError("Unauthorised", 403);
+  }
+
+  const { error } = await supabaseAdmin
     .from("consumption_profiles")
     .delete()
     .eq("id", profileId);
@@ -225,15 +252,11 @@ export async function deleteProfile(profileId) {
 }
 
 // ---------------------------------------------------------------------------
-// Template library
+// Template library — global data, no RLS needed
 // ---------------------------------------------------------------------------
 
-/**
- * Fetch the appliance template list for a given profile type.
- * Used by the ProfileBuilder Step 1 to pre-populate Step 2.
- */
 export async function getApplianceTemplates(profileType) {
-  const { data, error } = await supabase.rpc("get_appliance_templates", {
+  const { data, error } = await supabaseAdmin.rpc("get_appliance_templates", {
     p_profile_type: profileType,
   });
 
@@ -242,22 +265,15 @@ export async function getApplianceTemplates(profileType) {
     throw new AppError(error.message, 500);
   }
 
-  return data; // Array of template objects
+  return data;
 }
 
 // ---------------------------------------------------------------------------
-// Sizing engine integration
+// Sizing engine integration — internal server-side call, admin is correct
 // ---------------------------------------------------------------------------
 
-/**
- * Fetch the fields the sizing engine needs from a profile.
- * Called by energyService when an assessment has a profile_id.
- *
- * Returns a flat object the engine can consume directly — no need for it
- * to know about the profile table structure.
- */
 export async function getProfileForSizing(profileId) {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from("consumption_profiles")
     .select(
       `
@@ -306,41 +322,4 @@ export async function getProfileForSizing(profileId) {
     generatorFuelSpend: data.generator_fuel_spend_month,
     appliances: data.profile_appliances,
   };
-}
-
-// ---------------------------------------------------------------------------
-// Load curve utility (also computed server-side via trigger,
-// but useful client-side for the Step 4 preview without a round trip)
-// ---------------------------------------------------------------------------
-
-/**
- * Build a 24-element kWh load curve from an appliance list.
- * Mirror of the PostgreSQL compute_load_curve() function — same logic,
- * runs in the browser for instant Step 4 preview before save.
- *
- * @param {Array} appliances - profile_appliances-shaped objects
- * @returns {number[]}       - 24-element array, index = clock hour
- */
-export function buildLoadCurveClient(appliances) {
-  const curve = new Array(24).fill(0);
-
-  for (const app of appliances) {
-    const whPerHour = app.quantity * app.watts * (app.load_factor ?? 1.0);
-
-    if (app.active_hours && app.active_hours.length > 0) {
-      for (const h of app.active_hours) {
-        if (h >= 0 && h <= 23) {
-          curve[h] += whPerHour / 1000;
-        }
-      }
-    } else if (app.hours_weekday > 0) {
-      const numHours = Math.min(Math.round(app.hours_weekday), 24);
-      for (let h = 0; h < numHours; h++) {
-        curve[h] += whPerHour / 1000;
-      }
-    }
-  }
-
-  // Round to 3dp to avoid float noise in display
-  return curve.map((v) => Math.round(v * 1000) / 1000);
 }

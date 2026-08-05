@@ -17,6 +17,19 @@ import { StepUsage } from "./StepUsage.jsx";
 import { StepReview } from "./StepReview.jsx";
 import { buildLoadCurveClient } from "../../utils/loadCurve.js";
 import { STEPS, DEFAULT_USAGE } from "../../constants/profileBuild.js";
+import {
+  fetchProfile,
+  fetchProfileTemplates,
+  createProfile,
+  updateProfileHeader,
+  updateProfileAppliances,
+} from "../../services/installerApi.js";
+
+// At top of the file, after imports
+function extractError(err) {
+  // Axios wraps response errors; fall back to message
+  return err?.response?.data?.message || err.message || "Something went wrong";
+}
 
 export function ProfileBuilder({ customerId, profileId, onSave, onCancel }) {
   const [step, setStep] = useState(1);
@@ -50,7 +63,7 @@ export function ProfileBuilder({ customerId, profileId, onSave, onCancel }) {
       try {
         const res = await fetch(`/api/profiles/${profileId}`);
         if (!res.ok) throw new Error("Failed to load profile");
-        const data = await res.json();
+        const { data } = await fetchProfile(profileId);
 
         if (cancelled) return;
 
@@ -85,7 +98,7 @@ export function ProfileBuilder({ customerId, profileId, onSave, onCancel }) {
           notes: p.notes ?? "",
         });
       } catch (err) {
-        if (!cancelled) setError(err.message);
+        if (!cancelled) setError(extractError(err));
       } finally {
         if (!cancelled) {
           editLoadingRef.current = false;
@@ -123,9 +136,7 @@ export function ProfileBuilder({ customerId, profileId, onSave, onCancel }) {
     if (editLoadingRef.current || loadedTypeRef.current === type) return;
 
     try {
-      const res = await fetch(`/api/profiles/templates/${type}`);
-      if (!res.ok) throw new Error("Could not load appliance templates");
-      const data = await res.json();
+      const { data } = await fetchProfileTemplates(type);
 
       // Re-check after the await in case the edit-load effect resolved while
       // we were waiting and already populated appliances with real data.
@@ -150,7 +161,7 @@ export function ProfileBuilder({ customerId, profileId, onSave, onCancel }) {
       );
       loadedTypeRef.current = type;
     } catch (err) {
-      setError(err.message);
+      setError(extractError(err));
     }
   }, []);
 
@@ -202,37 +213,20 @@ export function ProfileBuilder({ customerId, profileId, onSave, onCancel }) {
 
       if (profileId) {
         // Edit: update profile header and appliances in parallel
-        const [pRes, aRes] = await Promise.all([
-          fetch(`/api/profiles/${profileId}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ profile: body.profile }),
-          }),
-          fetch(`/api/profiles/${profileId}/appliances`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ appliances: body.appliances }),
-          }),
+        const [pRes] = await Promise.all([
+          updateProfileHeader(profileId, { profile: body.profile }),
+          updateProfileAppliances(profileId, { appliances: body.appliances }),
         ]);
-        if (!pRes.ok || !aRes.ok) throw new Error("Failed to update profile");
-        result = await pRes.json();
+        result = pRes.data;
       } else {
         // Create: single POST with full body
-        const res = await fetch("/api/profiles", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.message || "Failed to save profile");
-        }
-        result = await res.json();
+        const res = await createProfile(body);
+        result = res.data;
       }
 
       onSave?.({ ...result, loadCurve });
     } catch (err) {
-      setError(err.message);
+      setError(extractError(err));
     } finally {
       setSaving(false);
     }
