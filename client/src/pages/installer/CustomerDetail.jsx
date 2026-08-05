@@ -606,7 +606,14 @@ export default function CustomerDetail() {
      directly as a derived value — no effect needed for that path.
      The effect below only runs for the async fetch when no frozen
      result exists yet.                                             */
-  const frozenCashflow = selectedAssessment?.cashflow_result ?? null;
+  const rawFrozen = selectedAssessment?.cashflow_result ?? null;
+  const frozenCashflow =
+    rawFrozen?.summary?.lifetimeSavingsNaira != null &&
+    rawFrozen?.yearly?.length > 0 &&
+    Math.abs(rawFrozen.summary.lifetimeSavingsNaira) < 1e15
+      ? rawFrozen
+      : null;
+
   const displayCashflow = frozenCashflow ?? cashflowProjection;
 
   /* ── Load cashflow projection (async fetch path only) ──
@@ -683,7 +690,13 @@ export default function CustomerDetail() {
     return () => {
       cancelled = true;
     };
-  }, [activeTab, selectedAssessment?.id, frozenCashflow, displaySizing]);
+  }, [
+    activeTab,
+    selectedAssessment?.id,
+    frozenCashflow,
+    displaySizing,
+    user?.id,
+  ]);
 
   /* ── Update status ── */
   const updateStatus = async (newStatus) => {
@@ -915,6 +928,13 @@ export default function CustomerDetail() {
                       setCashflowProjection(null);
                       setCashflowScenarios(null);
                       setCashflowError(null);
+                      setAssessments((prev) =>
+                        prev.map((a, i) =>
+                          i === Number(e.target.value)
+                            ? { ...a, cashflow_result: null }
+                            : a,
+                        ),
+                      );
                     }}
                     className="border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
                   >
@@ -1140,27 +1160,22 @@ export default function CustomerDetail() {
                           ? `₦${(displaySizing.estimatedCapex.total / 1_000_000).toFixed(1)}M`
                           : `₦${(displaySizing.estimatedCapex.total / 1_000).toFixed(0)}K`}
                       </p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        Panels ₦
-                        {(
-                          displaySizing.estimatedCapex.panelCost / 1_000
-                        ).toFixed(0)}
-                        K{" · "}Battery ₦
-                        {(
-                          displaySizing.estimatedCapex.batteryCost / 1_000
-                        ).toFixed(0)}
-                        K{" · "}Inverter ₦
-                        {(
-                          displaySizing.estimatedCapex.inverterCost / 1_000
-                        ).toFixed(0)}
-                        K{" · "}BOS + install ₦
-                        {(
-                          (displaySizing.estimatedCapex.bosCost +
-                            displaySizing.estimatedCapex.installationCost) /
-                          1_000
-                        ).toFixed(0)}
-                        K
-                      </p>
+                      {(() => {
+                        const fmt = (n) =>
+                          n >= 1_000_000
+                            ? `₦${(n / 1_000_000).toFixed(1)}M`
+                            : `₦${(n / 1_000).toFixed(0)}K`;
+                        const c = displaySizing.estimatedCapex;
+                        return (
+                          <p className="text-xs text-gray-400 mt-1">
+                            Panels {fmt(c.panelCost)}
+                            {" · "}Battery {fmt(c.batteryCost)}
+                            {" · "}Inverter {fmt(c.inverterCost)}
+                            {" · "}BOS + install{" "}
+                            {fmt(c.bosCost + c.installationCost)}
+                          </p>
+                        );
+                      })()}
                     </div>
                     <button
                       onClick={() => setActiveTab("quotation")}
