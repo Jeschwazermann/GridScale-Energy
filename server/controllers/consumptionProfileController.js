@@ -20,7 +20,10 @@ export const getProfileTemplates = async (req, res, next) => {
 
 export const getCustomerProfiles = async (req, res, next) => {
   try {
-    const profiles = await getProfilesByCustomer(req.params.customerId);
+    const profiles = await getProfilesByCustomer(
+      req.params.customerId,
+      req.token,
+    );
     res.json({ profiles });
   } catch (err) {
     next(err);
@@ -29,7 +32,10 @@ export const getCustomerProfiles = async (req, res, next) => {
 
 export const getConsumptionProfile = async (req, res, next) => {
   try {
-    const data = await getProfileWithAppliances(req.params.profileId);
+    const data = await getProfileWithAppliances(
+      req.params.profileId,
+      req.token,
+    );
     res.json(data);
   } catch (err) {
     next(err);
@@ -58,7 +64,11 @@ export const updateConsumptionProfile = async (req, res, next) => {
   try {
     const { id, installer_id, customer_id, load_curve_24h, ...safeUpdates } =
       req.body;
-    const updated = await updateProfile(req.params.profileId, safeUpdates);
+    const updated = await updateProfile(
+      req.params.profileId,
+      safeUpdates,
+      req.token,
+    );
     res.json({ profile: updated });
   } catch (err) {
     next(err);
@@ -75,6 +85,7 @@ export const replaceProfileAppliances = async (req, res, next) => {
     const updated = await updateProfileAppliances(
       req.params.profileId,
       appliances,
+      req.token,
     );
     res.json({ appliances: updated });
   } catch (err) {
@@ -84,7 +95,7 @@ export const replaceProfileAppliances = async (req, res, next) => {
 
 export const deleteConsumptionProfile = async (req, res, next) => {
   try {
-    await deleteProfile(req.params.profileId);
+    await deleteProfile(req.params.profileId, req.token);
     res.status(204).end();
   } catch (err) {
     next(err);

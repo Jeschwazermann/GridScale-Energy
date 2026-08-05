@@ -64,3 +64,18 @@ export const fetchCashflowProjection = (assessmentId) =>
 
 export const computeScenarios = (assessmentId, payload = {}) =>
   api.post(`/api/cashflow/scenarios/${assessmentId}`, payload);
+
+/* ── Consumption Profiles ── */
+export const fetchProfile = (profileId) =>
+  api.get(`/api/profiles/${profileId}`);
+
+export const fetchProfileTemplates = (type) =>
+  api.get(`/api/profiles/templates/${type}`);
+
+export const createProfile = (payload) => api.post("/api/profiles", payload);
+
+export const updateProfileHeader = (profileId, payload) =>
+  api.patch(`/api/profiles/${profileId}`, payload);
+
+export const updateProfileAppliances = (profileId, payload) =>
+  api.put(`/api/profiles/${profileId}/appliances`, payload);
