@@ -19,12 +19,6 @@ export const createAssessmentProjection = async (req, res, next) => {
       .eq("id", assessmentId)
       .single();
 
-    console.log("[cashflow] assessment fetch:", {
-      found: !!assessment,
-      error: fetchErr?.message,
-      code: fetchErr?.code,
-    });
-
     if (fetchErr || !assessment) {
       throw new AppError("Assessment not found", 404);
     }

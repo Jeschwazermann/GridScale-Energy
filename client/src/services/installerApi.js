@@ -11,10 +11,7 @@ api.interceptors.request.use(async (config) => {
   const {
     data: { session },
   } = await supabase.auth.getSession();
-  console.log(
-    "[api] session token:",
-    session?.access_token?.slice(0, 20) ?? "NONE",
-  );
+
   if (session?.access_token) {
     config.headers.Authorization = `Bearer ${session.access_token}`;
   }

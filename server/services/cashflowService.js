@@ -82,14 +82,21 @@ export const NIGERIA_DEFAULTS = {
  * @returns {CashflowResult}
  */
 export function computeCashflowProjection({
-  capexNaira,
-  dailyKwhDemand,
+  capexNaira: capexNairaRaw,
+  dailyKwhDemand: dailyKwhDemandRaw,
   gridHoursPerDay = 6,
   generatorHoursPerDay = 8,
   overrides = {},
   financing = null,
   lifespan,
 }) {
+  //const capexNaira = Number(capexNairaRaw);
+  const capexNaira = Number(capexNairaRaw);
+
+  const dailyKwhDemand = Number(dailyKwhDemandRaw);
+
+  const cfg = { ...NIGERIA_DEFAULTS, ...overrides };
+  const years = Number(lifespan ?? cfg.defaultLifespanYears);
   // Validate required inputs
   if (!capexNaira || capexNaira <= 0) {
     throw new AppError("capexNaira is required and must be positive", 400);
@@ -98,8 +105,7 @@ export function computeCashflowProjection({
     throw new AppError("dailyKwhDemand is required and must be positive", 400);
   }
 
-  const cfg = { ...NIGERIA_DEFAULTS, ...overrides };
-  const years = lifespan ?? cfg.defaultLifespanYears;
+  // const years = Number(lifespan ?? cfg.defaultLifespanYears);
 
   logger.info("computeCashflowProjection: start", {
     capexNaira,
@@ -532,10 +538,16 @@ export function computeFromAssessment(assessment, financing = null) {
 
   // CAPEX: use the midpoint of the sizing range if available,
   // fall back to a settings override, then error
-  let capexNaira = settings.capex ?? null;
+  // effectiveDailyKWh has 25% diversity + 20% system loss baked in (×1.5)
+  // Cashflow needs raw demand — strip the sizing buffers back out
+  const rawDailyKwhDemand = dailyKwhDemand / (1.25 * 1.2);
 
-  if (!capexNaira && sizing?.capex) {
-    // Use midpoint of estimated CAPEX range from solarService
+  // CAPEX: check estimatedCapex.total first (sizingService shape), then legacy capex field
+  let capexNaira = settings.capex ? Number(settings.capex) : null;
+
+  if (!capexNaira && sizing?.estimatedCapex?.total) {
+    capexNaira = sizing.estimatedCapex.total;
+  } else if (!capexNaira && sizing?.capex) {
     capexNaira = sizing.capex.max
       ? Math.round((sizing.capex.min + sizing.capex.max) / 2)
       : sizing.capex.min;
@@ -564,12 +576,14 @@ export function computeFromAssessment(assessment, financing = null) {
 
   return computeCashflowProjection({
     capexNaira,
-    dailyKwhDemand,
+    dailyKwhDemand: rawDailyKwhDemand,
     gridHoursPerDay,
     generatorHoursPerDay,
     overrides,
     financing,
-    lifespan: settings.lifespan ?? NIGERIA_DEFAULTS.defaultLifespanYears,
+    lifespan: settings.lifespan
+      ? Number(settings.lifespan)
+      : NIGERIA_DEFAULTS.defaultLifespanYears,
   });
 }
 
