@@ -14,12 +14,6 @@ if (!supabaseUrl || !supabaseService) {
   );
 }
 
-console.log(
-  "[supabase] service key present:",
-  !!supabaseService,
-  supabaseService?.slice(0, 10),
-);
-
 /* Service role client — bypasses RLS for admin operations.
    Never expose this key to the frontend.                    */
 export const supabaseAdmin = createClient(supabaseUrl, supabaseService);
