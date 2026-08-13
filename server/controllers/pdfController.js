@@ -1,11 +1,11 @@
 import { buildQuotationPdf } from "../services/quotationPdf.js";
 import logger from "../utils/logger.js";
-import AppError from "../utils/AppError.js";
+import { AppError } from "../utils/AppError.js";
 
 export async function generateQuotationPdf(req, res, next) {
   try {
     const { id } = req.params;
-    const installerId = req.installer.id;
+    const installerId = req.user.id;
 
     logger.info(
       `PDF generation requested — quotation ${id} by installer ${installerId}`,
