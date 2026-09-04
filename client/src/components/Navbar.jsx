@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Sun, Menu, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
@@ -35,13 +35,15 @@ export default function Navbar() {
       <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-teal-500 rounded-lg flex items-center justify-center">
-            <Sun size={18} className="text-white" strokeWidth={2.5} />
-          </div>
+          <img
+            src="/gridscale-icon-flat.svg"
+            alt="GridScale"
+            className="w-8 h-8 rounded-lg"
+          />
           <span
             className={`font-display font-bold text-xl tracking-tight transition-colors ${textColor}`}
           >
-            GridScale Africa
+            GridScale
           </span>
         </Link>
 
