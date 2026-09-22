@@ -115,7 +115,7 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
       <input
         type="number"
         name="hours"
-        placeholder="Hrs used/Day"
+        placeholder="Hrs/day"
         min="0"
         max="24"
         value={appliance.hours}
