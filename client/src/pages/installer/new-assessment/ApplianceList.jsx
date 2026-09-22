@@ -120,13 +120,18 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
         max="24"
         value={appliance.hours}
         onChange={(e) => onChange(index, e)}
+        onBlur={(e) => {
+          const v = parseFloat(e.target.value);
+          if (!isNaN(v) && v > 24)
+            onChange(index, { target: { name: "hours", value: "24" } });
+        }}
         className={inp}
       />
       <input
         type="number"
         name="units"
         placeholder="Units"
-        min="0"
+        min="1"
         value={appliance.units}
         onChange={(e) => onChange(index, e)}
         className={inp}
@@ -158,7 +163,7 @@ export default function ApplianceList({
       title="Appliances"
       subtitle="Search for each device — wattage fills in automatically"
     >
-      <div className="hidden md:grid grid-cols-[2fr_1fr_1fr_1fr_1fr_36px] gap-2 mb-3">
+      <div className="hidden md:grid grid-cols-[2fr_1fr_1fr_1fr_36px] gap-2 mb-3">
         {["Appliance", "Power (W)", "Hrs used/Day", "Units", ""].map((h) => (
           <span
             key={h}
