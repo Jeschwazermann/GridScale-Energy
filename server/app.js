@@ -15,7 +15,9 @@ import notFoundHandler from "./middleware/notFoundHandler.js";
 const app = express();
 
 const ALLOWED_ORIGINS = [
-  process.env.CLIENT_URL, // production frontend
+  process.env.CLIENT_URL, // production frontend (set in Render env vars)
+  "https://gridscaleafrica.com",
+  "https://www.gridscaleafrica.com",
   "http://localhost:5173", // local dev (Vite default)
   "http://localhost:4173", // local preview (vite preview)
 ].filter(Boolean);

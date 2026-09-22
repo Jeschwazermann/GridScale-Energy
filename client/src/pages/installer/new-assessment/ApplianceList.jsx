@@ -1,11 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Plus, Trash2, Search, Zap } from "lucide-react";
-import {
-  APPLIANCE_LIBRARY,
-  CATEGORY_ICONS,
-  EMPTY_APPLIANCE,
-  inp,
-} from "./assessmentHelpers";
+import { APPLIANCE_LIBRARY, CATEGORY_ICONS, inp } from "./assessmentHelpers";
 
 /* ─── SectionCard (local — only needed here and AssessmentSettings) ──
    Imported by both child components from their own copy, keeping each
@@ -63,7 +58,7 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr_1fr_1fr_36px] gap-2 items-start md:items-center bg-gray-50 md:bg-transparent rounded-xl md:rounded-none p-3 md:p-0">
+    <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr_1fr_36px] gap-2 items-start md:items-center bg-gray-50 md:bg-transparent rounded-xl md:rounded-none p-3 md:p-0">
       <div className="relative" ref={ref}>
         <div className="relative">
           <Search
@@ -120,20 +115,10 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
       <input
         type="number"
         name="hours"
-        placeholder="Hrs/day"
+        placeholder="Hrs used/Day"
         min="0"
         max="24"
         value={appliance.hours}
-        onChange={(e) => onChange(index, e)}
-        className={inp}
-      />
-      <input
-        type="number"
-        name="days"
-        placeholder="Days/yr"
-        min="0"
-        max="365"
-        value={appliance.days}
         onChange={(e) => onChange(index, e)}
         className={inp}
       />
@@ -157,14 +142,7 @@ function ApplianceRow({ appliance, index, onChange, onRemove, isOnly }) {
   );
 }
 
-/* ─── ApplianceList ──────────────────────────────────────────────
-   Props:
-     appliances   — array of appliance objects (owned by parent)
-     onChange     — (index, event) => void
-     onAdd        — () => void
-     onRemove     — (index) => void
-──────────────────────────────────────────────────────────────── */
-export { EMPTY_APPLIANCE };
+/* ─── ApplianceList  */
 
 export default function ApplianceList({
   appliances,
@@ -181,16 +159,14 @@ export default function ApplianceList({
       subtitle="Search for each device — wattage fills in automatically"
     >
       <div className="hidden md:grid grid-cols-[2fr_1fr_1fr_1fr_1fr_36px] gap-2 mb-3">
-        {["Appliance", "Power (W)", "Hrs/Day", "Days/Year", "Units", ""].map(
-          (h) => (
-            <span
-              key={h}
-              className="text-xs font-semibold text-gray-400 uppercase tracking-wide"
-            >
-              {h}
-            </span>
-          ),
-        )}
+        {["Appliance", "Power (W)", "Hrs used/Day", "Units", ""].map((h) => (
+          <span
+            key={h}
+            className="text-xs font-semibold text-gray-400 uppercase tracking-wide"
+          >
+            {h}
+          </span>
+        ))}
       </div>
 
       <div className="space-y-2">

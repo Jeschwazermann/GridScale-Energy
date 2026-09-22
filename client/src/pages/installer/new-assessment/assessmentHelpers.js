@@ -1,8 +1,3 @@
-/* ─── assessmentHelpers.js ───────────────────────────────────────
-   Shared constants and pure helpers used across the assessment
-   form components. No React imports — plain JS only.
-──────────────────────────────────────────────────────────────── */
-
 /* ─── Appliance library ──────────────────────────────────────── */
 export const APPLIANCE_LIBRARY = [
   { name: "LED Bulb", power: 9, category: "Lighting" },
@@ -75,7 +70,6 @@ export const EMPTY_APPLIANCE = {
   name: "",
   power: "",
   hours: "",
-  days: "",
   units: "1",
 };
 

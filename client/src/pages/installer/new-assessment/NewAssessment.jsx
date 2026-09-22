@@ -120,7 +120,7 @@ export default function NewAssessment() {
     const incomplete = appliances.some((a) => !a.power || !a.hours || !a.units);
     if (incomplete)
       return setError(
-        "Complete all appliance fields — Power, Hrs/Day, and Units.",
+        "Complete all appliance fields — Power, Hrs used/Day, and Units.",
       );
 
     if (includeGrid && !settings.gridTariff)
