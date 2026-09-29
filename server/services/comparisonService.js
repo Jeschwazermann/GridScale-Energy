@@ -24,18 +24,18 @@ export const compareCosts = (
 ) => {
   const { oversizeThreshold = 2.5, lowUsageThreshold = 800 } = options;
 
-  /* ── Build source list ───────────────────────────────────────── */
-  const sources = [];
-  if (grid) sources.push({ label: "Grid", annualCost: grid.annualCost });
-  if (generator)
-    sources.push({ label: "Generator", annualCost: generator.annualCost });
-  sources.push({ label: "Solar", annualCost: solar.annualCost });
+  // /* ── Build source list ───────────────────────────────────────── */
+  // const sources = [];
+  // if (grid) sources.push({ label: "Grid", annualCost: grid.annualCost });
+  // if (generator)
+  //   sources.push({ label: "Generator", annualCost: generator.annualCost });
+  // sources.push({ label: "Solar", annualCost: solar.annualCost });
 
-  /* ── Cheapest source ─────────────────────────────────────────── */
-  const cheapest = sources.reduce((a, b) =>
-    a.annualCost < b.annualCost ? a : b,
-  );
-  const cheapestSource = cheapest.label;
+  // /* ── Cheapest source ─────────────────────────────────────────── */
+  // const cheapest = sources.reduce((a, b) =>
+  //   a.annualCost < b.annualCost ? a : b,
+  // );
+  // const cheapestSource = cheapest.label;
 
   /* ── Current reality: what the user actually pays today ────── */
   const currentReality =
@@ -93,10 +93,11 @@ export const compareCosts = (
       } or a longer lifespan.`;
   } else if (savingsPerYear !== null && savingsPerYear <= 0) {
     // Determine if it's a sizing issue or usage issue
-    const baselineCostPerKWh = grid
-      ? grid.annualCost / (energy?.annualKWh || 1)
-      : (generator?.costPerKWh ?? 0);
-
+    const servedKWh = (grid?.gridKWh ?? 0) + (generator?.offGridKWh ?? 0);
+    const baselineCostTotal =
+      (grid?.annualCost ?? 0) + (generator?.annualCost ?? 0);
+    const baselineCostPerKWh =
+      servedKWh > 0 ? baselineCostTotal / servedKWh : 0;
     const costRatio =
       baselineCostPerKWh > 0 ? solar.costPerKWh / baselineCostPerKWh : 0;
 
@@ -146,7 +147,7 @@ export const compareCosts = (
   }
 
   return {
-    cheapestSource,
+    //cheapestSource,
     savingsPerYear,
     savingsVsReality,
     currentReality,

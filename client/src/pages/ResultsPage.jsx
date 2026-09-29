@@ -27,7 +27,7 @@ export default function ResultsPage() {
     if (state?.result) {
       trackEvent("calculator_completed", {
         savings_per_year: state.result?.comparison?.savingsPerYear ?? null,
-        cheapest_source: state.result?.comparison?.cheapestSource ?? null,
+        //cheapest_source: state.result?.comparison?.cheapestSource ?? null,
       });
     }
   }, [state]);

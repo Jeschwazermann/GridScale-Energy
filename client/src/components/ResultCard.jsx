@@ -299,7 +299,6 @@ export default function ResultCard({
   ].filter(Boolean);
 
   const maxCost = Math.max(...allSources.map((s) => s.annual));
-  const cheapestCost = Math.min(...allSources.map((s) => s.annual));
 
   /* Sort for display only — biggest bar first, so "solar is visibly
      smallest" reads instantly regardless of source count. Calcs above
@@ -339,8 +338,7 @@ export default function ResultCard({
       (!hasBothSources || (savingsVsReality ?? 0) < 0)) ||
     paybackExceedsLifespan;
 
-  const isSolarBestChoice =
-    isSolarViable && comparison.cheapestSource === "Solar";
+  const isSolarBestChoice = isSolarViable && primarySavingsPositive;
 
   const handleAdjustInputs = () => {
     if (typeof onAdjustInputs === "function") {
@@ -585,12 +583,12 @@ export default function ResultCard({
               detail,
               isReality,
             }) => {
-              const best = !isReality && label === comparison.cheapestSource;
+              // const best = !isReality && label === comparison.cheapestSource;
               const pct = maxCost > 0 ? (annual / maxCost) * 100 : 0;
-              const pctDiff =
-                !best && !isReality && cheapestCost > 0
-                  ? Math.round(((annual - cheapestCost) / cheapestCost) * 100)
-                  : null;
+              // //const pctDiff =
+              //   !best && !isReality && cheapestCost > 0
+              //     ? Math.round(((annual - cheapestCost) / cheapestCost) * 100)
+              //     : null;
 
               const sourceEquivalent =
                 !isBusiness && label === "Generator"
@@ -616,7 +614,7 @@ export default function ResultCard({
                           What you pay today
                         </span>
                       )}
-                      {best && (
+                      {/* {best && (
                         <span className="text-xs bg-teal-100 text-teal-700 font-bold px-2 py-0.5 rounded-full">
                           Cheapest
                         </span>
@@ -625,16 +623,14 @@ export default function ResultCard({
                         <span className="text-xs bg-orange-50 text-orange-500 font-semibold px-2 py-0.5 rounded-full">
                           +{pctDiff}%
                         </span>
-                      )}
+                      )} */}
                     </div>
                     <div className="text-right">
                       <span
                         className={`font-display font-bold text-sm ${
-                          best
-                            ? "text-teal-700"
-                            : isReality
-                              ? "text-gray-500"
-                              : "text-gray-700"
+                          // best
+                          //   ? "text-teal-700"
+                          isReality ? "text-gray-500" : "text-gray-700"
                         }`}
                       >
                         {fmtShort(monthly)}/mo
@@ -852,7 +848,7 @@ export default function ResultCard({
             >
               {isSolarBestChoice
                 ? `${fmtShort(monthlySavings ?? 0)}/month is leaving your pocket unnecessarily`
-                : `${comparison.cheapestSource} is your best option right now`}
+                : "Your current setup is still the cheaper option"}
             </p>
             <p
               className={`text-sm mt-0.5 ${
@@ -913,12 +909,25 @@ export default function ResultCard({
           for maintenance, oil changes, and servicing. Energy consumption
           estimates include a 25% buffer for secondary appliances and a 20%
           allowance for system losses.
-          {energy.gridHoursPerDay < 24 && (
+          {grid && energy.gridHoursPerDay < 24 && (
             <>
               {" "}
               Grid costs cover only the {energy.gridHoursPerDay}hrs/day of grid
-              supply entered; generator costs cover the remaining{" "}
-              {energy.genHoursPerDay}hrs. Solar covers the full 24hrs.
+              supply entered
+              {generator && (
+                <>; generator costs cover another {energy.genHoursPerDay}hrs</>
+              )}
+              .{" "}
+              {energy.unpoweredHours > 0 ? (
+                <>
+                  The remaining {energy.unpoweredHours}hrs/day currently go
+                  unpowered in this comparison — solar is sized to cover the
+                  full 24hrs, so switching also closes that gap in addition to
+                  the cost savings shown above.
+                </>
+              ) : (
+                <>Solar covers the full 24hrs.</>
+              )}
             </>
           )}{" "}
           Grid tariffs, fuel prices, and solar costs vary by location, supplier,

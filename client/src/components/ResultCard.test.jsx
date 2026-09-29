@@ -60,7 +60,6 @@ describe("ResultCard", () => {
     expect(
       screen.getByRole("button", { name: "Get Free Quote →" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Cheapest")).toBeInTheDocument();
     expect(screen.getByText(/Solar Journey/)).toBeInTheDocument();
   });
 
