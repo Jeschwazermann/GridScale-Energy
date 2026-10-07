@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext.jsx";
+import AuthConfirmPage from "./pages/installer/AuthConfirmPage.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import ErrorBoundary from "./components/ErrorBoundary";
 
@@ -68,6 +69,7 @@ export default function App() {
         {/* ── Installer auth ── */}
         <Route path="/installer/login" element={<LoginPage />} />
         <Route path="/installer/signup" element={<SignupPage />} />
+        <Route path="/auth/confirm" element={<AuthConfirmPage />} />
         {/* ── Installer app (protected + error boundary) ── */}
         <Route
           path="/installer/dashboard"
