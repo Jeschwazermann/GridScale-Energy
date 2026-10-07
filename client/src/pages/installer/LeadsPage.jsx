@@ -153,7 +153,7 @@ export default function LeadsPage() {
          Returns customerId for navigation. */
       const { data } = await convertLead(lead.id);
 
-      console.log("[handleConvert] Response:", data);
+      // console.log("[handleConvert] Response:", data);
 
       setLeads((prev) =>
         prev.map((l) => (l.id === lead.id ? { ...l, status: "converted" } : l)),

@@ -276,7 +276,7 @@ export function AuthProvider({ children }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log("AUTH EVENT:", event);
+      // console.log("AUTH EVENT:", event);
 
       if (event === "INITIAL_SESSION") {
         handleSession(session, true);
@@ -379,6 +379,12 @@ export function AuthProvider({ children }) {
     });
 
     if (error) throw error;
+
+    if (data.user && data.user.identities?.length === 0) {
+      throw new Error(
+        "An account with this email already exists — try signing in instead.",
+      );
+    }
 
     if (data.user && data.session) {
       const { error: profileError } = await supabase.from("installers").upsert(

@@ -104,7 +104,7 @@ export const claimLead = async (req, res, next) => {
       .select()
       .maybeSingle();
 
-    console.log("Claim update result:", { data, error });
+    // console.log("Claim update result:", { data, error });
     if (error || !data) {
       return next(new AppError("Lead not found or already claimed.", 409));
     }
@@ -118,12 +118,12 @@ export const claimLead = async (req, res, next) => {
 /* PUT /api/installer/leads/:id/convert — create customer + mark lead converted */
 export const convertLead = async (req, res, next) => {
   try {
-    console.log(
-      "[convertLead] Starting — lead:",
-      req.params.id,
-      "installer:",
-      req.user.id,
-    );
+    // console.log(
+    //   "[convertLead] Starting — lead:",
+    //   req.params.id,
+    //   "installer:",
+    //   req.user.id,
+    // );
 
     /* Fetch lead — only matches if this installer owns it */
     const { data: lead, error: leadErr } = await supabaseAdmin
@@ -133,7 +133,7 @@ export const convertLead = async (req, res, next) => {
       .eq("claimed_by", req.user.id)
       .maybeSingle();
 
-    console.log("[convertLead] Lead fetch:", { lead, leadErr });
+    // console.log("[convertLead] Lead fetch:", { lead, leadErr });
 
     if (leadErr) throw leadErr;
     if (!lead) return next(new AppError("Lead not found.", 404));
@@ -155,7 +155,7 @@ export const convertLead = async (req, res, next) => {
       .select()
       .single();
 
-    console.log("[convertLead] Customer insert:", { customer, custErr });
+    // console.log("[convertLead] Customer insert:", { customer, custErr });
 
     if (custErr) throw custErr;
 
@@ -192,10 +192,10 @@ export const convertLead = async (req, res, next) => {
       .update({ status: "converted" })
       .eq("id", req.params.id);
 
-    console.log("[convertLead] Lead status update:", { updateErr });
+    // console.log("[convertLead] Lead status update:", { updateErr });
     if (updateErr) throw updateErr;
 
-    console.log("[convertLead] Done — new customer id:", customer.id);
+    // console.log("[convertLead] Done — new customer id:", customer.id);
 
     /* Return both customerId (for navigation) and full customer object */
     res.json({ customerId: customer.id, customer });
